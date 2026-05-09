@@ -1,0 +1,163 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --color-primary: 63 224 165;
+    --color-primary-dark: 56 184 151;
+    --color-secondary: 139 92 246;
+    --color-accent: 236 72 153;
+
+    --z-base: 0;
+    --z-dropdown: 1000;
+    --z-sticky: 1020;
+    --z-fixed: 1030;
+    --z-modal-backdrop: 1040;
+    --z-modal: 1050;
+    --z-popover: 1060;
+    --z-tooltip: 1070;
+    --z-header: 1080;
+    --z-overlay: 1090;
+    --z-sidebar: 1100;
+    --z-command-palette: 1110;
+
+    --gradient-mesh-1: rgba(63, 224, 165, 0.15);
+    --gradient-mesh-2: rgba(139, 92, 246, 0.12);
+    --gradient-mesh-3: rgba(236, 72, 153, 0.1);
+    --gradient-mesh-4: rgba(59, 130, 246, 0.08);
+  }
+
+  body {
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background:
+      radial-gradient(circle at 20% 30%, var(--gradient-mesh-1) 0%, transparent 50%),
+      radial-gradient(circle at 80% 20%, var(--gradient-mesh-2) 0%, transparent 50%),
+      radial-gradient(circle at 40% 80%, var(--gradient-mesh-3) 0%, transparent 50%),
+      radial-gradient(circle at 90% 70%, var(--gradient-mesh-4) 0%, transparent 50%);
+    animation: meshMove 20s ease-in-out infinite;
+    pointer-events: none;
+    z-index: -1;
+    opacity: 0.6;
+  }
+
+  @keyframes meshMove {
+    0%, 100% { transform: translate(0, 0) rotate(0deg); }
+    33% { transform: translate(5%, -5%) rotate(2deg); }
+    66% { transform: translate(-5%, 5%) rotate(-2deg); }
+  }
+}
+
+@layer components {
+  .glass-enhanced {
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+  .dark .glass-enhanced {
+    background: rgba(17, 24, 39, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  .btn-magnetic {
+    transition: transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  .btn-magnetic:hover { transform: scale(1.02); }
+
+  .card-elevated {
+    box-shadow: 0 2px 4px -1px rgba(0,0,0,.04), 0 4px 6px -1px rgba(0,0,0,.06), 0 8px 12px -2px rgba(0,0,0,.08);
+    transition: box-shadow 0.3s cubic-bezier(0.4,0,0.2,1), transform 0.3s cubic-bezier(0.4,0,0.2,1);
+  }
+  .card-elevated:hover {
+    box-shadow: 0 10px 15px -3px rgba(0,0,0,.06), 0 20px 25px -5px rgba(0,0,0,.08), 0 30px 40px -10px rgba(0,0,0,.1);
+    transform: translateY(-2px);
+  }
+
+  .shimmer {
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0) 100%);
+    background-size: 200% 100%;
+    animation: shimmer 2s infinite;
+  }
+  .dark .shimmer {
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0) 100%);
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+
+  .stagger-fade-in { animation: fadeInUp 0.5s cubic-bezier(0.4,0,0.2,1) backwards; }
+  @keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .stagger-1 { animation-delay: 0.05s; }
+  .stagger-2 { animation-delay: 0.1s; }
+  .stagger-3 { animation-delay: 0.15s; }
+  .stagger-4 { animation-delay: 0.2s; }
+  .stagger-5 { animation-delay: 0.25s; }
+  .stagger-6 { animation-delay: 0.3s; }
+
+  .page-transition { animation: pageEnter 0.4s cubic-bezier(0.4,0,0.2,1); }
+  @keyframes pageEnter {
+    from { opacity: 0; transform: scale(0.98); }
+    to { opacity: 1; transform: scale(1); }
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+  .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+  .scrollbar-custom::-webkit-scrollbar { width: 8px; height: 8px; }
+  .scrollbar-custom::-webkit-scrollbar-track { background: transparent; }
+  .scrollbar-custom::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.2); border-radius: 4px; }
+  .dark .scrollbar-custom::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
+}
+
+/* iOS-style utilities */
+.ios-card { @apply bg-white dark:bg-gray-800 rounded-2xl shadow-lg; }
+.glass { @apply bg-white/80 dark:bg-gray-800/80 backdrop-blur-md; }
+.glass-light { @apply bg-white/60 dark:bg-gray-800/60 backdrop-blur-lg; }
+.backdrop-blur-ios { backdrop-filter: blur(20px) saturate(180%); -webkit-backdrop-filter: blur(20px) saturate(180%); }
+.shadow-ios-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06); }
+.shadow-ios-md { box-shadow: 0 4px 6px -1px rgba(0,0,0,0.08), 0 2px 4px -1px rgba(0,0,0,0.06); }
+.shadow-ios-lg { box-shadow: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -2px rgba(0,0,0,0.05); }
+.shadow-ios-xl { box-shadow: 0 20px 25px -5px rgba(0,0,0,0.08), 0 10px 10px -5px rgba(0,0,0,0.04); }
+.shadow-ios-2xl { box-shadow: 0 25px 50px -12px rgba(0,0,0,0.15); }
+.neon-green { box-shadow: 0 0 20px rgba(63,224,165,0.3); }
+.ios-scroll { scrollbar-width: thin; scrollbar-color: rgba(0,0,0,0.2) transparent; }
+.ios-scroll::-webkit-scrollbar { width: 8px; height: 8px; }
+.ios-scroll::-webkit-scrollbar-track { background: transparent; }
+.ios-scroll::-webkit-scrollbar-thumb { background-color: rgba(0,0,0,0.2); border-radius: 20px; border: 2px solid transparent; }
+.dark .ios-scroll::-webkit-scrollbar-thumb { background-color: rgba(255,255,255,0.2); }
+.text-ios-green { color: rgb(63,224,165); }
+.text-ios-teal { color: rgb(56,184,151); }
+.text-ios-blue { color: rgb(0,122,255); }
+.text-ios-red { color: rgb(255,59,48); }
+.bg-ios-green { background-color: rgb(63,224,165); }
+.bg-ios-teal { background-color: rgb(56,184,151); }
+.touch-target { min-width: 44px; min-height: 44px; }
+
+/* Fluid typography */
+.text-fluid-xs { font-size: clamp(0.75rem, 0.7rem + 0.25vw, 0.875rem); }
+.text-fluid-sm { font-size: clamp(0.875rem, 0.82rem + 0.28vw, 1rem); }
+.text-fluid-base { font-size: clamp(1rem, 0.93rem + 0.33vw, 1.125rem); }
+.text-fluid-lg { font-size: clamp(1.125rem, 1.04rem + 0.42vw, 1.25rem); }
+.text-fluid-xl { font-size: clamp(1.25rem, 1.14rem + 0.54vw, 1.5rem); }
+.text-fluid-2xl { font-size: clamp(1.5rem, 1.35rem + 0.75vw, 1.875rem); }
+.text-fluid-3xl { font-size: clamp(1.875rem, 1.66rem + 1.07vw, 2.25rem); }
+.text-fluid-4xl { font-size: clamp(2.25rem, 1.95rem + 1.5vw, 3rem); }

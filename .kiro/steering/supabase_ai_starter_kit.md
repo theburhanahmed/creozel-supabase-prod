@@ -1,0 +1,377 @@
+---
+inclusion: manual
+---
+# Supabase AI Starter Kit - Project Adaptation Guide
+
+This rule helps me understand and guide users in adapting this Supabase AI Starter Kit for their specific AI applications and use cases.
+
+## **Starter Kit Overview**
+
+This is a comprehensive **Infrastructure-as-Code Supabase AI Starter Kit** that provides:
+
+- **Full Supabase Backend**: Database, Auth, Realtime, Storage, Edge Functions
+- **Kong API Gateway**: Professional API management and routing
+- **n8n Workflow Automation**: AI workflow orchestration and integrations
+- **Development Email**: Inbucket for testing email flows
+- **Testing Infrastructure**: Node.js test scripts and health monitoring
+- **NPM Workflow**: Convenient script management for all operations
+- **Docker-First Approach**: No Supabase Studio dependency, everything via config
+
+## **Key Architecture Components**
+
+### **Core Services** (docker-compose.yml)
+- **`supabase-db`**: PostgreSQL with pgvector for AI embeddings
+- **`supabase-auth`**: GoTrue authentication service
+- **`supabase-kong`**: API gateway and routing (port 8000)
+- **`supabase-rest`**: PostgREST API for database operations
+- **`supabase-realtime`**: WebSocket connections for live updates
+- **`supabase-storage`**: File storage service
+- **`supabase-functions`**: Edge Functions runtime
+- **`supabase-mail`**: Inbucket email service for development
+
+### **AI/Automation Services**
+- **`n8n`**: Workflow automation platform (port 5678)
+- **n8n-postgres**: Dedicated database for n8n workflows
+
+### **Development Tools**
+- **Health Check Scripts**: Service monitoring (`scripts/`)
+- **Test Authentication Scripts**: Complete auth flow testing (`scripts/`)
+- **NPM Scripts**: Convenient workflow management
+
+## **Common AI Use Cases & Adaptations**
+
+### **🤖 AI Chatbot/Assistant**
+**Typical Requirements:**
+- User conversations storage
+- Message history and context
+- AI model integrations (OpenAI, Anthropic, etc.)
+- Real-time messaging
+
+**Adaptation Strategy:**
+```sql
+-- Example schema additions
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES auth.users(id),
+  title TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  conversation_id UUID REFERENCES conversations(id),
+  role TEXT CHECK (role IN ('user', 'assistant', 'system')),
+  content TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+```
+
+**n8n Workflows:**
+- Chat completion workflow
+- Message processing pipeline
+- Context management
+
+### **📊 AI Analytics/Insights Platform**
+**Typical Requirements:**
+- Data ingestion pipelines
+- Vector embeddings for semantic search
+- Dashboard APIs
+- Scheduled AI analysis
+
+**Adaptation Strategy:**
+- Leverage pgvector for embeddings
+- Create data ingestion n8n workflows
+- Build analytics Edge Functions
+- Use Realtime for live dashboard updates
+
+### **🎨 AI Content Generation**
+**Typical Requirements:**
+- Content templates and generation
+- Media processing and storage
+- Approval workflows
+- Content versioning
+
+**Adaptation Strategy:**
+- Extend Supabase Storage for media
+- Create generation workflows in n8n
+- Build approval/review systems
+- Version control with database schemas
+
+### **🔍 AI-Powered Search/Discovery**
+**Typical Requirements:**
+- Vector search capabilities
+- Content indexing
+- Search analytics
+- Personalization
+
+**Adaptation Strategy:**
+- Utilize pgvector for semantic search
+- Create indexing pipelines
+- Build search analytics
+- Implement user preference systems
+
+## **Initialization Process for New Users**
+
+### **Step 1: Environment Setup**
+```bash
+# Clone and setup
+git clone <repository>
+cd supabase-ai-starter-kit
+cp .env.example .env
+npm install  # Initialize npm scripts
+```
+
+**Guide user to configure `.env` with:**
+- Database credentials
+- API keys for AI services (OpenAI, Anthropic, etc.)
+- SMTP settings for development
+- Custom domain/security settings
+
+### **Step 2: Service Startup (NPM Workflow - Recommended)**
+```bash
+# Quick start (recommended)
+npm start
+
+# Development with full features
+npm run dev:full
+
+# Start with email server for testing
+npm run dev:email
+
+# Alternative: Direct Docker commands
+docker-compose up -d
+docker-compose -f docker-compose.yml -f docker/docker-compose.dev.yml up -d
+```
+
+### **Step 3: Validation**
+```bash
+# NPM workflow (recommended)
+npm run health        # Health check
+npm test             # Full test suite
+npm run test:auth    # Authentication tests
+
+# Alternative: Direct script execution
+./scripts/health-check.sh
+./scripts/test-auth-complete.js
+```
+
+**Service URLs:**
+- n8n workflows: `http://localhost:5678`
+- Email service: `http://localhost:9000`
+- Supabase API: `http://localhost:8000`
+
+## **NPM Workflow Commands**
+
+### **Quick Start Commands**
+- **`npm start`**: Start core services quickly
+- **`npm run dev`**: Start with development features
+- **`npm stop`**: Stop all services
+- **`npm run logs`**: View service logs
+
+### **Testing Commands**
+- **`npm test`**: Run full test suite
+- **`npm run health`**: Check service health
+- **`npm run test:auth`**: Test authentication flow
+
+### **Development Variants**
+- **`npm run dev:full`**: All services including email
+- **`npm run dev:s3`**: Include S3-compatible storage
+- **`npm run email:open`**: Open email interface
+
+### **Utility Commands**
+- **`npm run db:connect`**: Connect to database
+- **`npm run reset`**: Clean reset all services
+- **`npm run reset:ollama`**: Reset including Ollama models
+
+## **Extension Patterns**
+
+### **Database Schema Extensions**
+- **Start with authentication schema** (already configured)
+- **Add domain-specific tables** based on use case
+- **Leverage pgvector** for AI embeddings
+- **Use JSONB fields** for flexible metadata
+- **Implement RLS policies** for security
+
+### **API Development Patterns**
+- **Edge Functions** for AI processing (`volumes/functions/`)
+- **PostgREST APIs** for CRUD operations
+- **Kong routing** for API organization
+- **Real-time subscriptions** for live features
+
+### **n8n Workflow Patterns**
+- **AI Model Integration**: OpenAI, Anthropic, local models
+- **Data Processing Pipelines**: ETL for AI training
+- **Webhook Handlers**: External service integrations
+- **Scheduled Jobs**: Batch processing, cleanup tasks
+
+### **Testing Strategy**
+- **Node.js Scripts**: Authentication flow testing (`scripts/`)
+- **Health Checks**: Service monitoring (`scripts/health-check.sh`)
+- **Integration Tests**: End-to-end workflows
+
+## **Common Configuration Points**
+
+### **Authentication Customization**
+```env
+# Email settings
+ENABLE_EMAIL_SIGNUP=true
+ENABLE_EMAIL_AUTOCONFIRM=false  # Set true for development
+DISABLE_SIGNUP=false
+
+# OAuth providers (add as needed)
+ENABLE_PHONE_SIGNUP=false
+ENABLE_PHONE_AUTOCONFIRM=false
+```
+
+### **AI Service Integration**
+```env
+# Add AI service keys
+OPENAI_API_KEY=sk-...
+ANTHROPIC_API_KEY=sk-ant-...
+HUGGING_FACE_API_KEY=hf_...
+```
+
+### **n8n Configuration**
+```env
+# n8n settings
+N8N_BASIC_AUTH_ACTIVE=true
+N8N_BASIC_AUTH_USER=admin
+N8N_BASIC_AUTH_PASSWORD=password
+```
+
+## **Development Strategy**
+
+### **Implementation Phases**
+Guide users through a logical development progression:
+
+**Phase 1: Core Setup**
+- Configure environment and start services (`npm start`)
+- Validate authentication flow (`npm run test:auth`)
+- Test basic API connectivity (`npm run health`)
+
+**Phase 2: AI Integration**  
+- Add AI service API keys
+- Create first AI endpoint (Edge Function)
+- Test basic AI functionality
+
+**Phase 3: User Experience**
+- Build basic UI for AI features
+- Add real-time updates
+- Implement user feedback
+
+**Phase 4: Advanced Features**
+- Add vector search/RAG if needed
+- Optimize performance
+- Add monitoring and analytics
+
+## **Key Success Patterns**
+
+### **🚀 Quick Start Wins**
+1. **Get authentication working first** (already configured)
+2. **Create simple AI endpoint** (Edge Function + n8n workflow)
+3. **Build basic UI** for testing AI functionality
+4. **Add real-time features** for better UX
+
+### **🏗️ Scalable Architecture**
+- **Separate concerns**: Auth, AI processing, data storage
+- **Use Kong for API management** as complexity grows
+- **Leverage n8n for complex workflows** vs Edge Functions for simple APIs
+- **Plan for vector search early** if relevant to use case
+
+### **🔧 Development Best Practices**
+- **Use NPM scripts** for consistent workflow management
+- **Test early and often** with provided test scripts
+- **Monitor services** with health checks
+- **Version control workflows** in n8n export format
+
+## **Red Flags & Common Issues**
+
+### **⚠️ Networking Issues**
+- **Docker network connectivity**: Ensure services can communicate
+- **Port conflicts**: Check for existing services on required ports
+- **Environment variables**: Verify all required keys are set
+
+### **⚠️ Authentication Problems**
+- **Email confirmation**: Configure SMTP properly for production
+- **CORS issues**: Set up allowed origins correctly
+- **JWT secrets**: Use strong, unique secrets in production
+
+### **⚠️ AI Integration Challenges**
+- **API rate limits**: Plan for quota management
+- **Model costs**: Monitor usage and implement budgets
+- **Context windows**: Design for token limitations
+- **Error handling**: Graceful degradation when AI services fail
+
+### **⚠️ Data Persistence**
+- **Volume management**: Understand which data persists across resets
+- **Ollama models**: Use `npm run reset:ollama` to clear models vs standard reset
+- **Database backups**: Plan for data export before major resets
+
+## **Questions to Ask New Users**
+
+### **Use Case Discovery**
+1. "What specific AI functionality do you want to build?"
+2. "Who are your target users and how will they interact with the AI?"
+3. "What data will your AI work with?"
+4. "Do you need real-time features or can it be request/response?"
+
+### **Technical Requirements**
+1. "Which AI models/services do you plan to use?"
+2. "Do you need vector search or semantic similarity?"
+3. "Will you have user-generated content or workflows?"
+4. "What integrations with external services do you need?"
+
+### **Scope and Timeline**
+1. "What's your MVP vs. full feature set?"
+2. "Do you have any existing systems to integrate with?"
+3. "What's your experience level with these technologies?"
+4. "Any specific deployment or scaling requirements?"
+
+## **Helpful Commands Reference**
+
+### **NPM Workflow (Recommended)**
+```bash
+# Start services
+npm start                    # Quick start
+npm run dev                  # Development mode
+npm run dev:full            # Full feature set
+
+# Testing and monitoring
+npm run health              # Check service health
+npm test                    # Run test suite
+npm run test:auth          # Test authentication
+
+# Utilities
+npm run logs               # View service logs
+npm stop                   # Stop all services
+npm run reset             # Clean reset (preserve Ollama)
+npm run reset:ollama      # Full reset including Ollama models
+```
+
+### **Direct Docker Commands (Alternative)**
+```bash
+# Container management
+docker-compose ps                    # View running services
+docker-compose restart [service]    # Restart specific service
+docker-compose down && docker-compose up -d  # Full restart
+
+# Database access
+docker exec -it supabase-db psql -U postgres
+
+# Reset with options
+./scripts/reset.sh                   # Standard reset (preserve Ollama)
+./scripts/reset.sh --clear-ollama    # Nuclear option (remove everything)
+./scripts/reset.sh --dev-email       # Include email server cleanup
+```
+
+### **File Organization**
+```
+project-root/
+├── scripts/           # All utility scripts
+├── docker/           # Docker Compose variants
+├── volumes/          # Service configurations and functions
+└── package.json      # NPM script definitions
+```
+
+This starter kit provides a production-ready foundation for AI applications with Supabase. The key is helping users understand which components to extend vs. replace based on their specific use case, and providing clear guidance for building their AI features efficiently using the NPM workflow.
