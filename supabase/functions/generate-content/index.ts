@@ -72,8 +72,17 @@ serve(async (req: Request) => {
       // Text and video scripts use OpenAI
       if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-      const systemPrompt = job.metadata?.brand_voice
-        ? `You are a content creator. Brand voice: ${job.metadata.brand_voice}. Tone: ${job.metadata.tone ?? 'professional'}.`
+      // Fetch brand voice from brand_profiles table (non-fatal if missing)
+      const { data: brandProfile } = await supabase
+        .from('brand_profiles')
+        .select('voice_guidelines')
+        .eq('user_id', job.user_id)
+        .maybeSingle()
+
+      const voiceGuidelines = brandProfile?.voice_guidelines ?? null
+
+      const systemPrompt = voiceGuidelines
+        ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${job.metadata?.tone ?? 'professional'}.`
         : `You are a professional content creator. Tone: ${job.metadata?.tone ?? 'professional'}.`
 
       const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -280,29 +289,38 @@ serve(async (req: Request) => {
     try {
       const { job_id } = await req.clone().json() as { job_id?: string }
       if (job_id) {
-        const supabase2 = createClient(supabaseUrl, serviceKey)
-        const { data: job } = await supabase2
+        await supabase
           .from('content_jobs')
           .select('credits_reserved, user_id')
           .eq('id', job_id)
           .maybeSingle()
+          .then(async ({ data: job }) => {
+            await supabase
+              .from('content_jobs')
+              .update({
+                status:        'failed',
+                error_message: message,
+                updated_at:    new Date().toISOString(),
+              })
+              .eq('id', job_id)
 
-        await supabase2
-          .from('content_jobs')
-          .update({
-            status:        'failed',
-            error_message: message,
-            updated_at:    new Date().toISOString(),
+            // Release reserved credits
+            if (job) {
+              const { data: failWallet } = await supabase
+                .from('wallets')
+                .select('id, reserved')
+                .eq('user_id', job.user_id)
+                .is('team_id', null)
+                .maybeSingle()
+
+              if (failWallet) {
+                await supabase
+                  .from('wallets')
+                  .update({ reserved: Math.max(0, failWallet.reserved - (job.credits_reserved ?? 0)) })
+                  .eq('id', failWallet.id)
+              }
+            }
           })
-          .eq('id', job_id)
-
-        // Release reserved credits
-        if (job) {
-          await supabase2
-            .from('wallets')
-            .update({ reserved: supabase2.rpc('greatest', { a: 0, b: 0 }) })
-            .eq('user_id', job.user_id)
-        }
       }
     } catch {
       // Best-effort cleanup

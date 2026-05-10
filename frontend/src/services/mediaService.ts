@@ -4,7 +4,11 @@ import type { MediaItem, MediaType } from '../types'
 
 export async function getMediaItems(userId: string, teamId?: string, type?: MediaType): Promise<MediaItem[]> {
   try {
-    let query = supabase.from('media_items').select('*').order('created_at', { ascending: false })
+    let query = supabase
+      .from('media_items')
+      .select('*')
+      .is('deleted_at', null)
+      .order('created_at', { ascending: false })
     if (teamId) query = query.eq('team_id', teamId)
     else query = query.eq('user_id', userId)
     if (type) query = query.eq('type', type)
@@ -51,8 +55,13 @@ export async function uploadMediaItem(
 
 export async function deleteMediaItem(item: MediaItem): Promise<boolean> {
   try {
+    // Remove from Storage
     await supabase.storage.from('media').remove([item.storage_path])
-    const { error } = await supabase.from('media_items').delete().eq('id', item.id)
+    // Soft delete — set deleted_at instead of hard delete
+    const { error } = await supabase
+      .from('media_items')
+      .update({ deleted_at: new Date().toISOString() })
+      .eq('id', item.id)
     if (error) { reportError('mediaService.deleteMediaItem', error); return false }
     return true
   } catch (error: unknown) {

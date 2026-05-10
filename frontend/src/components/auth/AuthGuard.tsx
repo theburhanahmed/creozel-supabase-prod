@@ -1,5 +1,5 @@
 import React from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 import { useAppContext } from '../../context/AppContext'
 
 interface AuthGuardProps {
@@ -10,9 +10,11 @@ interface AuthGuardProps {
  * Protects routes by checking the live Supabase session.
  * Shows a spinner while the initial auth check is in flight,
  * then redirects to /auth/login if no session exists.
+ * Redirects to /onboarding if the user hasn't completed onboarding.
  */
 export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
   const { user, isAuthLoading } = useAppContext()
+  const location = useLocation()
 
   if (isAuthLoading) {
     return (
@@ -29,6 +31,11 @@ export const AuthGuard: React.FC<AuthGuardProps> = ({ children }) => {
 
   if (!user) {
     return <Navigate to="/auth/login" replace />
+  }
+
+  // Redirect to onboarding if not completed, unless already there
+  if (!user.onboarding_completed && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace />
   }
 
   return <>{children}</>

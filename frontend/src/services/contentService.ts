@@ -127,11 +127,11 @@ export async function cancelJob(jobId: string, userId: string): Promise<void> {
       .eq('id', jobId)
       .single()
 
-    if (!job || job.status === 'completed' || job.status === 'failed') return
+    if (!job || job.status === 'cancelled' || job.status === 'completed' || job.status === 'failed') return
 
     await supabase
       .from('content_jobs')
-      .update({ status: 'failed', error_message: 'Cancelled by user' })
+      .update({ status: 'cancelled', error_message: 'Cancelled by user' })
       .eq('id', jobId)
 
     // Release reserved credits

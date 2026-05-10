@@ -10,12 +10,10 @@ import {
   AlertCircleIcon,
 } from 'lucide-react'
 import { authService } from '../../services/authService'
-import { useAppContext } from '../../context/AppContext'
 import { debounce } from '../../lib/utils'
 
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate()
-  const { setUser } = useAppContext()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
@@ -26,13 +24,15 @@ export const LoginForm: React.FC = () => {
 
   // Debounced submit — 1 s as per PRD §6.1
   const handleLoginDebounced = useRef(
-    debounce((emailVal: string, passwordVal: string) => {
+    debounce((...args: unknown[]) => {
+      const emailVal    = args[0] as string
+      const passwordVal = args[1] as string
       setError('')
       authService
         .login({ email: emailVal, password: passwordVal })
-        .then((u) => {
-          setUser(u)
-          toast.success('Welcome back!', { description: `Signed in as ${u.email}` })
+        .then(() => {
+          // Auth state is updated exclusively via onAuthStateChange in AppContext
+          toast.success('Welcome back!')
           navigate('/', { replace: true })
         })
         .catch((err: unknown) => {

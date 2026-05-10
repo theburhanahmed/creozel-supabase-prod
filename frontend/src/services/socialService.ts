@@ -36,7 +36,7 @@ export async function getSocialConnections(
 }
 
 /**
- * Disconnect a social account — marks as inactive and clears tokens.
+ * Disconnect a social account — marks as inactive and cancels any scheduled posts.
  */
 export async function disconnectSocialAccount(connectionId: string): Promise<boolean> {
   try {
@@ -50,6 +50,13 @@ export async function disconnectSocialAccount(connectionId: string): Promise<boo
       return false
     }
 
+    // Cancel any scheduled posts linked to this connection
+    await supabase
+      .from('scheduled_posts')
+      .update({ status: 'failed', error_message: 'Social account disconnected' })
+      .eq('social_connection_id', connectionId)
+      .eq('status', 'scheduled')
+
     return true
   } catch (error: unknown) {
     reportError('socialService.disconnectSocialAccount', error, { connectionId })
@@ -59,10 +66,10 @@ export async function disconnectSocialAccount(connectionId: string): Promise<boo
 
 /**
  * Initiate OAuth connection for a platform.
- * In production this would redirect to the platform's OAuth URL via an Edge Function.
- * For now, returns the Edge Function URL to redirect to.
+ * Redirects to the oauth-connect Edge Function which handles the OAuth flow.
  */
 export function getOAuthUrl(platform: SocialPlatform): string {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-  return `${supabaseUrl}/functions/v1/oauth-connect?platform=${platform}&redirect_uri=${encodeURIComponent(window.location.origin + '/social-accounts')}`
+  const redirectUri = encodeURIComponent(`${window.location.origin}/social-accounts`)
+  return `${supabaseUrl}/functions/v1/oauth-connect?platform=${platform}&redirect_uri=${redirectUri}`
 }

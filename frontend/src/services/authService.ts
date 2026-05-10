@@ -72,7 +72,11 @@ export const authService = {
     callback: (user: User | null) => void,
   ): { unsubscribe: () => void } {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      callback(session?.user ? mapSupabaseUser(session.user) : null)
+      if (session?.user) {
+        void mapSupabaseUser(session.user).then(callback)
+      } else {
+        callback(null)
+      }
     })
     return { unsubscribe: () => data.subscription.unsubscribe() }
   },
@@ -98,14 +102,29 @@ export const authService = {
 
 /**
  * Map a Supabase auth user to our app's User type.
- * Full profile data is loaded separately from the profiles table.
+ * Fetches onboarding_completed from the profiles table.
  */
-function mapSupabaseUser(supabaseUser: {
+async function mapSupabaseUser(supabaseUser: {
   id: string
   email?: string
   user_metadata?: Record<string, unknown>
-}): User {
+}): Promise<User> {
   const meta = supabaseUser.user_metadata ?? {}
+
+  let onboarding_completed = false
+  try {
+    const { data } = await supabase
+      .from('profiles')
+      .select('onboarding_completed')
+      .eq('id', supabaseUser.id)
+      .single()
+    if (data) {
+      onboarding_completed = (data as { onboarding_completed: boolean }).onboarding_completed ?? false
+    }
+  } catch {
+    // Non-fatal — default to false, user will be redirected to onboarding
+  }
+
   return {
     id: supabaseUser.id,
     email: supabaseUser.email ?? '',
@@ -117,7 +136,7 @@ function mapSupabaseUser(supabaseUser: {
     avatar_url: (meta['avatar_url'] as string) ?? '',
     timezone: 'UTC',
     notification_preferences: {},
-    onboarding_completed: false,
+    onboarding_completed,
     credits: 0,
     isAuthenticated: true,
   }

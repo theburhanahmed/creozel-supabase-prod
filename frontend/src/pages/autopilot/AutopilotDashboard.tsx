@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom'
 import { RocketIcon, WorkflowIcon, CalendarIcon, SparklesIcon, ExternalLinkIcon } from 'lucide-react'
 
 export const AutopilotDashboard: React.FC = () => {
-  const n8nUrl = 'http://localhost:5678' // n8n default port
+  const n8nUrl = (import.meta.env.VITE_N8N_URL as string | undefined) ?? 'http://localhost:5678'
 
   return (
     <div className="space-y-6">

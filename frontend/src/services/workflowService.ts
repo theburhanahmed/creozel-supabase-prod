@@ -54,3 +54,45 @@ export async function getRecentExecutions(teamId?: string, limit = 10): Promise<
     return []
   }
 }
+
+export async function pausePipeline(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('pipeline_executions')
+      .update({ status: 'pending' })
+      .eq('id', id)
+    if (error) { reportError('workflowService.pausePipeline', error, { id }); return false }
+    return true
+  } catch (error: unknown) {
+    reportError('workflowService.pausePipeline', error, { id })
+    return false
+  }
+}
+
+export async function resumePipeline(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('pipeline_executions')
+      .update({ status: 'running' })
+      .eq('id', id)
+    if (error) { reportError('workflowService.resumePipeline', error, { id }); return false }
+    return true
+  } catch (error: unknown) {
+    reportError('workflowService.resumePipeline', error, { id })
+    return false
+  }
+}
+
+export async function deletePipeline(id: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('pipeline_executions')
+      .delete()
+      .eq('id', id)
+    if (error) { reportError('workflowService.deletePipeline', error, { id }); return false }
+    return true
+  } catch (error: unknown) {
+    reportError('workflowService.deletePipeline', error, { id })
+    return false
+  }
+}

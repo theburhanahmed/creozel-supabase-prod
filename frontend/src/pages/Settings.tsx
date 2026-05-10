@@ -1,12 +1,17 @@
 import React, { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   UserIcon,
   BriefcaseIcon,
   ShieldIcon,
   BellIcon,
+  LinkIcon,
   SaveIcon,
   Loader2Icon,
+  CheckCircleIcon,
+  AlertCircleIcon,
+  RefreshCwIcon,
 } from 'lucide-react'
 import { useAppContext } from '../context/AppContext'
 import {
@@ -17,15 +22,18 @@ import {
   updatePassword,
   updateNotificationPreferences,
 } from '../services/settingsService'
-import type { BrandProfile, NotificationPreferences } from '../types'
+import { getSocialConnections } from '../services/socialService'
+import { reportError } from '../utils/errorReporter'
+import type { BrandProfile, NotificationPreferences, SocialConnection, SocialPlatform } from '../types'
 
-type Tab = 'profile' | 'brand' | 'security' | 'notifications'
+type Tab = 'profile' | 'brand' | 'security' | 'notifications' | 'integrations'
 
 const TABS: Array<{ id: Tab; label: string; icon: React.ReactNode }> = [
   { id: 'profile',       label: 'Profile',       icon: <UserIcon size={16} /> },
   { id: 'brand',         label: 'Brand',         icon: <BriefcaseIcon size={16} /> },
   { id: 'security',      label: 'Security',      icon: <ShieldIcon size={16} /> },
   { id: 'notifications', label: 'Notifications', icon: <BellIcon size={16} /> },
+  { id: 'integrations',  label: 'Integrations',  icon: <LinkIcon size={16} /> },
 ]
 
 const TIMEZONES = [
@@ -403,6 +411,93 @@ const NotificationsTab: React.FC = () => {
   )
 }
 
+// ─── Integrations Tab ────────────────────────────────────────────────────────
+const PLATFORM_LABELS: Record<SocialPlatform, string> = {
+  instagram: 'Instagram',
+  youtube:   'YouTube',
+  twitter:   'Twitter / X',
+  facebook:  'Facebook',
+  linkedin:  'LinkedIn',
+  tiktok:    'TikTok',
+}
+
+const IntegrationsTab: React.FC = () => {
+  const { user } = useAppContext()
+  const navigate = useNavigate()
+  const [connections, setConnections] = useState<SocialConnection[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!user) return
+    setLoading(true)
+    getSocialConnections(user.id)
+      .then(setConnections)
+      .catch((error: unknown) => {
+        reportError('IntegrationsTab.load', error)
+        toast.error('Failed to load connected accounts')
+      })
+      .finally(() => setLoading(false))
+  }, [user])
+
+  const connectedPlatforms = new Set(connections.filter((c) => c.is_active).map((c) => c.platform))
+  const platforms: SocialPlatform[] = ['instagram', 'youtube', 'twitter', 'facebook', 'linkedin', 'tiktok']
+
+  return (
+    <div className="space-y-5">
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Manage your connected social accounts. Full connection management is available on the{' '}
+        <button
+          onClick={() => navigate('/social-accounts')}
+          className="text-[#3FE0A5] hover:underline font-medium"
+        >
+          Social Accounts
+        </button>{' '}
+        page.
+      </p>
+
+      {loading ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="animate-pulse h-16 bg-gray-200 dark:bg-gray-700 rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {platforms.map((platform) => {
+            const isConnected = connectedPlatforms.has(platform)
+            return (
+              <div key={platform} className="flex items-center justify-between p-4 glass-light rounded-xl">
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  {PLATFORM_LABELS[platform]}
+                </span>
+                {isConnected ? (
+                  <div className="flex items-center gap-1.5 text-[#3FE0A5] text-xs font-medium">
+                    <CheckCircleIcon size={14} />
+                    Connected
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-gray-400 text-xs">
+                    <AlertCircleIcon size={14} />
+                    Not connected
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <button
+        onClick={() => navigate('/social-accounts')}
+        className="flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white font-semibold rounded-xl hover:opacity-90 transition-opacity text-sm"
+      >
+        <RefreshCwIcon size={16} />
+        Manage Connections
+      </button>
+    </div>
+  )
+}
+
 // ─── Settings ─────────────────────────────────────────────────────────────────
 export const Settings: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>('profile')
@@ -441,6 +536,7 @@ export const Settings: React.FC = () => {
           {activeTab === 'brand'         && <BrandTab />}
           {activeTab === 'security'      && <SecurityTab />}
           {activeTab === 'notifications' && <NotificationsTab />}
+          {activeTab === 'integrations'  && <IntegrationsTab />}
         </div>
       </div>
     </div>

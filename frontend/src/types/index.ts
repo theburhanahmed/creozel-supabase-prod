@@ -89,7 +89,7 @@ export interface TeamInvitation {
 // ─── Content Generation ──────────────────────────────────────────────────────
 
 export type ContentType = 'text' | 'image' | 'video' | 'audio'
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed'
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled'
 
 export interface ContentJob {
   id: string

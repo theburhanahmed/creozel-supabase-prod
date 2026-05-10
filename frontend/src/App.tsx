@@ -13,6 +13,9 @@ import { Login } from './pages/auth/Login'
 import { Register } from './pages/auth/Register'
 
 // ─── Lazy pages ───────────────────────────────────────────────────────────────
+const ForgotPassword     = lazy(() => import('./pages/auth/ForgotPassword').then((m) => ({ default: m.ForgotPassword })))
+const ResetPassword      = lazy(() => import('./pages/auth/ResetPassword').then((m) => ({ default: m.ResetPassword })))
+const Onboarding         = lazy(() => import('./pages/onboarding/Onboarding').then((m) => ({ default: m.Onboarding })))
 const Dashboard          = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const ContentHub         = lazy(() => import('./pages/content/ContentHub').then((m) => ({ default: m.ContentHub })))
 const Calendar           = lazy(() => import('./pages/Calendar').then((m) => ({ default: m.Calendar })))
@@ -57,8 +60,10 @@ function AppShell() {
 
         <Routes>
           {/* Public */}
-          <Route path="/auth/login"    element={<Login />} />
-          <Route path="/auth/register" element={<Register />} />
+          <Route path="/auth/login"           element={<Login />} />
+          <Route path="/auth/register"        element={<Register />} />
+          <Route path="/auth/forgot-password" element={<Suspense fallback={<PageLoader />}><ForgotPassword /></Suspense>} />
+          <Route path="/auth/reset-password"  element={<Suspense fallback={<PageLoader />}><ResetPassword /></Suspense>} />
 
           {/* Protected */}
           <Route
@@ -80,6 +85,7 @@ function AppShell() {
                         <Breadcrumbs autoGenerate className="hidden md:block" />
                         <Suspense fallback={<PageLoader />}>
                           <Routes>
+                            <Route path="/onboarding"              element={<Onboarding />} />
                             <Route path="/"                        element={<Dashboard />} />
                             <Route path="/profile"                 element={<UserProfile />} />
                             <Route path="/notifications"           element={<Notifications />} />

@@ -1,75 +1,128 @@
-# Tasks: MVP Database Schema
+# Implementation Tasks — MVP Database Schema
 
-## Implementation Tasks
+## Task Dependency Graph
 
-- [x] 1. Create supabase directory structure and config
-  - [x] 1.1 Create `supabase/config.toml` with local project configuration
-  - [x] 1.2 Create `supabase/migrations/` directory
+```
+T1 → T2 → T3 → T4 → T5 → T6 → T7 → T8 → T9 → T10 → T11 → T12 → T13 → T14 → T15 → T16 → T17 → T18 → T19
+```
 
-- [x] 2. Write migration: enums
-  - [x] 2.1 Create `supabase/migrations/20260501000001_enums.sql` with all PostgreSQL enum types
+---
 
-- [x] 3. Write migration: profiles and brand_profiles
-  - [x] 3.1 Create `supabase/migrations/20260501000002_profiles.sql`
-  - [x] 3.2 Include `profiles` table with all columns and CHECK constraints
-  - [x] 3.3 Include `brand_profiles` table
-  - [x] 3.4 Include `handle_new_user` trigger function and trigger
+- [ ] 1. Create extensions migration
+  - Create `supabase/migrations/20240101000000_extensions.sql`
+  - Enable `pgcrypto` and `uuid-ossp` extensions with `CREATE EXTENSION IF NOT EXISTS`
+  - **Validates:** Requirement 1.4
 
-- [x] 4. Write migration: teams
-  - [x] 4.1 Create `supabase/migrations/20260501000003_teams.sql`
-  - [x] 4.2 Include `teams`, `team_members`, `team_invitations` tables
-  - [x] 4.3 Include `is_team_member` and `team_member_role` helper functions
+- [ ] 2. Create helper functions migration
+  - Create `supabase/migrations/20240101000100_helper_functions.sql`
+  - Implement `is_team_member(team_id uuid)` as `SECURITY DEFINER` function
+  - Implement `team_role(team_id uuid)` as `SECURITY DEFINER` function
+  - **Validates:** Requirement 18.4, 18.5
 
-- [x] 5. Write migration: social connections (before content, due to FK)
-  - [x] 5.1 Create `supabase/migrations/20260501000004_social.sql`
-  - [x] 5.2 Include `social_connections` and `webhook_events` tables
+- [ ] 3. Create profiles migration
+  - Create `supabase/migrations/20240101000200_profiles.sql`
+  - Define `profiles` table with all columns per Requirement 2.1
+  - Add `handle_new_user()` trigger function and `on_auth_user_created` trigger
+  - Enable RLS; add SELECT/UPDATE policy for `id = auth.uid()`
+  - **Validates:** Requirements 2.1–2.5
 
-- [x] 6. Write migration: content jobs and scheduled posts
-  - [x] 6.1 Create `supabase/migrations/20260501000005_content.sql`
-  - [x] 6.2 Include `content_jobs` table
-  - [x] 6.3 Include `scheduled_posts` table with FK to `social_connections`
+- [ ] 4. Create teams and membership migration
+  - Create `supabase/migrations/20240101000300_teams.sql`
+  - Define `teams`, `team_members`, `team_invitations`, `team_activity_log` tables
+  - Add UNIQUE constraint on `team_members(team_id, user_id)`
+  - Enable RLS on all four tables with role-based and expiry-aware policies
+  - **Validates:** Requirements 4.1–4.8
 
-- [x] 7. Write migration: pipelines
-  - [x] 7.1 Create `supabase/migrations/20260501000006_pipelines.sql`
-  - [x] 7.2 Include `pipeline_executions` table
+- [ ] 5. Create brand profiles migration
+  - Create `supabase/migrations/20240101000400_brand_profiles.sql`
+  - Define `brand_profiles` table with user/team dual-scope
+  - Enable RLS with `user_id = auth.uid() OR is_team_member(team_id)` policy
+  - **Validates:** Requirements 3.1–3.3
 
-- [x] 8. Write migration: media library
-  - [x] 8.1 Create `supabase/migrations/20260501000007_media.sql`
-  - [x] 8.2 Include `media_items` table
+- [ ] 6. Create social connections migration
+  - Create `supabase/migrations/20240101000500_social_connections.sql`
+  - Define `social_connections` table with `vault_secret_id` (no raw token columns)
+  - Add UNIQUE constraint on `(team_id, platform, platform_account_id)`
+  - Enable RLS with admin/owner write restriction
+  - **Validates:** Requirements 7.1–7.5
 
-- [x] 9. Write migration: credits and billing
-  - [x] 9.1 Create `supabase/migrations/20260501000008_credits.sql`
-  - [x] 9.2 Include `wallets` table with CHECK constraint (balance >= 0)
-  - [x] 9.3 Include `handle_new_profile` trigger function and trigger
-  - [x] 9.4 Include `credit_transactions` table with CHECK constraint (amount != 0)
-  - [x] 9.5 Include `pricing_config` table
-  - [x] 9.6 Include `subscriptions` table
+- [ ] 7. Create content jobs migration
+  - Create `supabase/migrations/20240101000600_content_jobs.sql`
+  - Define `content_jobs` table with status CHECK constraint and credit columns
+  - Enable RLS: SELECT for team members, INSERT for editor/admin/owner
+  - **Validates:** Requirements 5.1–5.4
 
-- [x] 10. Write migration: notifications and analytics
-  - [x] 10.1 Create `supabase/migrations/20260501000009_notifications_analytics.sql`
-  - [x] 10.2 Include `notifications` table
-  - [x] 10.3 Include `analytics_events` table
+- [ ] 8. Create scheduled posts migration
+  - Create `supabase/migrations/20240101000700_scheduled_posts.sql`
+  - Define `scheduled_posts` table with status lifecycle CHECK constraint
+  - Enable RLS: SELECT for team members, INSERT/UPDATE for editor/admin/owner
+  - **Validates:** Requirements 6.1–6.4
 
-- [x] 11. Write migration: affiliate
-  - [x] 11.1 Create `supabase/migrations/20260501000010_affiliate.sql`
-  - [x] 11.2 Include `referral_events` and `affiliate_earnings` tables
+- [ ] 9. Create webhook events migration
+  - Create `supabase/migrations/20240101000800_webhook_events.sql`
+  - Define `webhook_events` table
+  - Enable RLS with service-role-only policy (no authenticated user access)
+  - **Validates:** Requirements 8.1–8.3
 
-- [x] 12. Write migration: analytics view
-  - [x] 12.1 Create `supabase/migrations/20260501000011_views.sql`
-  - [x] 12.2 Include `analytics_overview` view
+- [ ] 10. Create pipeline executions migration
+  - Create `supabase/migrations/20240101000900_pipeline_executions.sql`
+  - Define `pipeline_executions` table with duration_ms column
+  - Enable RLS: SELECT for team members, INSERT/UPDATE service role only
+  - **Validates:** Requirements 9.1–9.3
 
-- [x] 13. Write migration: RLS policies
-  - [x] 13.1 Create `supabase/migrations/20260501000012_rls.sql`
-  - [x] 13.2 Enable RLS on all tables
-  - [x] 13.3 Add policies for user-scoped tables (profiles, brand_profiles, wallets, notifications)
-  - [x] 13.4 Add policies for team-scoped tables using helper functions
-  - [x] 13.5 Add policies for pricing_config (public read)
-  - [x] 13.6 Add policies for webhook_events (service role only)
+- [ ] 11. Create media items migration
+  - Create `supabase/migrations/20240101001000_media_items.sql`
+  - Define `media_items` table with `storage_path`, `file_size_bytes`, `tags`, soft delete
+  - Enable RLS: SELECT for team members, INSERT/DELETE for editor/admin/owner
+  - **Validates:** Requirements 10.1–10.4
 
-- [x] 14. Write migration: seed data
-  - [x] 14.1 Create `supabase/migrations/20260501000013_seed.sql`
-  - [x] 14.2 Insert default pricing_config rows for all content types
+- [ ] 12. Create wallets and credit transactions migration
+  - Create `supabase/migrations/20240101001100_wallets_and_credits.sql`
+  - Define `wallets` table with `CHECK (balance >= 0)` and `CHECK (reserved >= 0)`
+  - Define `credit_transactions` table
+  - Implement `reserve_credits`, `deduct_credits`, `release_credits` as `SECURITY DEFINER` functions
+  - Enable RLS on both tables
+  - **Validates:** Requirements 11.1–11.8
 
-- [x] 15. Update TypeScript types to match schema
-  - [x] 15.1 Update `frontend/src/types/index.ts` to align field names with actual DB columns (snake_case)
-  - [x] 15.2 Add missing types: `BrandProfile`, `TeamInvitation`, `PipelineExecution`, `Subscription`, `Notification`, `AnalyticsEvent`
+- [ ] 13. Create pricing config migration
+  - Create `supabase/migrations/20240101001200_pricing_config.sql`
+  - Define `pricing_config` table
+  - Seed default rows for `text` (10), `image` (25), `video_script` (15), `audio` (20) with `ON CONFLICT DO NOTHING`
+  - Enable RLS: SELECT for all authenticated, INSERT/UPDATE/DELETE service role only
+  - **Validates:** Requirements 12.1–12.5
+
+- [ ] 14. Create subscriptions migration
+  - Create `supabase/migrations/20240101001300_subscriptions.sql`
+  - Define `subscriptions` table with provider and plan CHECK constraints
+  - Enable RLS: SELECT for owner, INSERT/UPDATE/DELETE service role only
+  - **Validates:** Requirements 13.1–13.4
+
+- [ ] 15. Create notifications migration
+  - Create `supabase/migrations/20240101001400_notifications.sql`
+  - Define `notifications` table
+  - Enable RLS: SELECT and UPDATE for `user_id = auth.uid()` only
+  - **Validates:** Requirements 14.1–14.3
+
+- [ ] 16. Create analytics events migration
+  - Create `supabase/migrations/20240101001500_analytics_events.sql`
+  - Define `analytics_events` table
+  - Enable RLS: INSERT and SELECT for team members
+  - **Validates:** Requirements 15.1–15.4
+
+- [ ] 17. Create referral and affiliate migration
+  - Create `supabase/migrations/20240101001600_referral_affiliate.sql`
+  - Define `referral_events` and `affiliate_earnings` tables
+  - Enable RLS: referrer-scoped SELECT on `referral_events`, user-scoped SELECT on `affiliate_earnings`
+  - **Validates:** Requirements 16.1–16.5
+
+- [ ] 18. Create views migration
+  - Create `supabase/migrations/20240101001700_views.sql`
+  - Implement `analytics_overview` view with LEFT JOINs and FILTER aggregations
+  - Implement `storage_usage` view filtering `deleted_at IS NULL`
+  - **Validates:** Requirements 17.1–17.4
+
+- [ ] 19. Create RLS completeness migration and CI job
+  - Create `supabase/migrations/20240101001800_rls_completeness.sql`
+  - Apply `ALTER TABLE <table> FORCE ROW LEVEL SECURITY` to all tables
+  - Add CI job in `.github/workflows/ci.yml` that applies all migrations against a fresh PostgreSQL 15 Docker container
+  - **Validates:** Requirements 18.1–18.3, 19.1–19.4

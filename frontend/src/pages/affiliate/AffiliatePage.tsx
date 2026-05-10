@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react'
 import { toast } from 'sonner'
 import { CopyIcon, CheckIcon, DollarSignIcon, UsersIcon, TrendingUpIcon } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
-import { supabase } from '../../lib/supabase'
+import { getAffiliateData } from '../../services/affiliateService'
 import type { AffiliateEarning, ReferralEvent } from '../../types'
 
 export const AffiliatePage: React.FC = () => {
@@ -15,23 +15,18 @@ export const AffiliatePage: React.FC = () => {
 
   useEffect(() => {
     if (!user) return
-    const load = async () => {
-      const [profileRes, earningsRes, referralsRes] = await Promise.all([
-        supabase.from('profiles').select('referral_code').eq('id', user.id).single(),
-        supabase.from('affiliate_earnings').select('*').eq('user_id', user.id).order('created_at', { ascending: false }),
-        supabase.from('referral_events').select('*').eq('referrer_user_id', user.id).order('clicked_at', { ascending: false }),
-      ])
-      setReferralCode((profileRes.data as { referral_code?: string } | null)?.referral_code ?? '')
-      setEarnings((earningsRes.data ?? []) as AffiliateEarning[])
-      setReferrals((referralsRes.data ?? []) as ReferralEvent[])
+    void getAffiliateData(user.id).then((data) => {
+      setReferralCode(data.referralCode)
+      setEarnings(data.earnings)
+      setReferrals(data.referrals)
       setLoading(false)
-    }
-    void load()
+    })
   }, [user])
 
-  const referralLink = `${window.location.origin}?ref=${referralCode}`
+  const referralLink = referralCode ? `${window.location.origin}?ref=${referralCode}` : ''
 
   const handleCopy = async () => {
+    if (!referralLink) return
     await navigator.clipboard.writeText(referralLink)
     setCopied(true)
     toast.success('Referral link copied!')
@@ -51,9 +46,9 @@ export const AffiliatePage: React.FC = () => {
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4">
         {[
-          { label: 'Total Clicks',   value: referrals.length, icon: <TrendingUpIcon size={18} />, color: 'text-blue-500' },
-          { label: 'Conversions',    value: conversions,       icon: <UsersIcon size={18} />,      color: 'text-green-500' },
-          { label: 'Total Earned',   value: `$${totalEarnings}`, icon: <DollarSignIcon size={18} />, color: 'text-[#3FE0A5]' },
+          { label: 'Total Clicks',   value: referrals.length,    icon: <TrendingUpIcon size={18} />, color: 'text-blue-500' },
+          { label: 'Conversions',    value: conversions,          icon: <UsersIcon size={18} />,      color: 'text-green-500' },
+          { label: 'Total Earned',   value: `$${totalEarnings}`,  icon: <DollarSignIcon size={18} />, color: 'text-[#3FE0A5]' },
         ].map((stat) => (
           <div key={stat.label} className="glass-enhanced rounded-2xl p-4 text-center">
             <div className={`flex justify-center mb-2 ${stat.color}`}>{stat.icon}</div>
@@ -67,10 +62,16 @@ export const AffiliatePage: React.FC = () => {
       <div className="glass-enhanced rounded-2xl p-6">
         <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">Your Referral Link</h2>
         <div className="flex gap-2">
-          <input readOnly value={loading ? 'Loading…' : referralLink}
-            className="flex-1 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300" />
-          <button onClick={() => void handleCopy()} disabled={!referralCode}
-            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50">
+          <input
+            readOnly
+            value={loading ? 'Loading…' : (referralLink || 'No referral code yet')}
+            className="flex-1 rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2.5 text-sm text-gray-700 dark:text-gray-300"
+          />
+          <button
+            onClick={() => void handleCopy()}
+            disabled={!referralCode || loading}
+            className="flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white font-semibold rounded-xl hover:opacity-90 disabled:opacity-50"
+          >
             {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
             {copied ? 'Copied!' : 'Copy'}
           </button>
@@ -88,9 +89,17 @@ export const AffiliatePage: React.FC = () => {
               <div key={e.id} className="flex items-center justify-between p-3 glass-light rounded-xl">
                 <div>
                   <p className="text-sm font-medium text-gray-900 dark:text-white">${e.amount}</p>
-                  <p className="text-xs text-gray-400">{e.period_start ? `${new Date(e.period_start).toLocaleDateString()} – ${new Date(e.period_end ?? '').toLocaleDateString()}` : new Date(e.created_at).toLocaleDateString()}</p>
+                  <p className="text-xs text-gray-400">
+                    {e.period_start
+                      ? `${new Date(e.period_start).toLocaleDateString()} – ${new Date(e.period_end ?? '').toLocaleDateString()}`
+                      : new Date(e.created_at).toLocaleDateString()}
+                  </p>
                 </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${e.status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'}`}>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
+                  e.status === 'paid'
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300'
+                    : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300'
+                }`}>
                   {e.status}
                 </span>
               </div>

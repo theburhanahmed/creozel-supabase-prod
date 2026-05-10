@@ -9,8 +9,7 @@ interface BreadcrumbsProps {
 }
 
 export const Breadcrumbs: React.FC<BreadcrumbsProps> = ({ autoGenerate = false, className = '' }) => {
-  let location
-  try { location = useLocation() } catch { return null }
+  const location = useLocation()
 
   if (!autoGenerate || !location) return null
 

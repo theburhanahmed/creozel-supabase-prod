@@ -8,7 +8,7 @@ create type public.team_role as enum ('owner', 'admin', 'editor', 'viewer');
 create type public.content_type as enum ('text', 'image', 'video', 'audio');
 
 -- Job / pipeline execution status
-create type public.job_status as enum ('pending', 'running', 'completed', 'failed');
+create type public.job_status as enum ('pending', 'running', 'completed', 'failed', 'cancelled');
 
 -- Scheduled post status
 create type public.post_status as enum ('draft', 'scheduled', 'published', 'failed');

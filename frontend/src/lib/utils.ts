@@ -52,7 +52,7 @@ export function generateId(length = 8): string {
   return Math.random().toString(36).substring(2, 2 + length)
 }
 
-export function debounce<T extends (...args: string[]) => unknown>(
+export function debounce<T extends (...args: unknown[]) => unknown>(
   fn: T,
   delay: number,
 ): (...args: Parameters<T>) => void {
