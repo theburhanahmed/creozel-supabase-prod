@@ -1,5 +1,9 @@
 -- Migration: Teams, Members, Invitations, and Helper Functions
 
+-- ─── extensions ──────────────────────────────────────────────────────────────
+-- pgcrypto is required for gen_random_bytes() used in invitation tokens
+create extension if not exists pgcrypto with schema extensions;
+
 -- ─── teams ───────────────────────────────────────────────────────────────────
 create table public.teams (
   id         uuid default gen_random_uuid() primary key,
@@ -29,7 +33,7 @@ create table public.team_invitations (
   team_id     uuid references public.teams(id) on delete cascade not null,
   email       text not null,
   role        public.team_role not null default 'editor',
-  token       text unique not null default encode(gen_random_bytes(32), 'hex'),
+  token       text unique not null default encode(extensions.gen_random_bytes(32), 'hex'),
   invited_by  uuid references auth.users(id) on delete set null,
   expires_at  timestamptz not null default (now() + interval '7 days'),
   accepted_at timestamptz,

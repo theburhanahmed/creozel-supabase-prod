@@ -122,8 +122,10 @@ async function mapSupabaseUser(supabaseUser: {
   let onboarding_completed = false
   try {
     // Upsert ensures the row always exists — safe to call on every login.
-    // `on conflict (id) do nothing` means existing rows are never overwritten.
-    const { data } = await supabase
+    // ignoreDuplicates: true means existing rows are never overwritten.
+    // We do NOT chain .select() here to avoid a 406 from PostgREST when the
+    // RLS "return=representation" check conflicts with the INSERT policy.
+    await supabase
       .from('profiles')
       .upsert(
         {
@@ -133,7 +135,12 @@ async function mapSupabaseUser(supabaseUser: {
         },
         { onConflict: 'id', ignoreDuplicates: true },
       )
+
+    // Separate SELECT to read onboarding status — covered by the SELECT policy.
+    const { data } = await supabase
+      .from('profiles')
       .select('onboarding_completed')
+      .eq('id', supabaseUser.id)
       .single()
 
     if (data) {
