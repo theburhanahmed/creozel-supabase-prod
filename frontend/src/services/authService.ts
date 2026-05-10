@@ -102,7 +102,9 @@ export const authService = {
 
 /**
  * Map a Supabase auth user to our app's User type.
- * Fetches onboarding_completed from the profiles table.
+ * Fetches onboarding_completed from the profiles table, creating the row if
+ * it doesn't exist yet (handles users who signed up before the trigger was
+ * in place, or edge cases where the trigger silently failed).
  */
 async function mapSupabaseUser(supabaseUser: {
   id: string
@@ -111,13 +113,29 @@ async function mapSupabaseUser(supabaseUser: {
 }): Promise<User> {
   const meta = supabaseUser.user_metadata ?? {}
 
+  const displayName =
+    (meta['name'] as string) ??
+    (meta['full_name'] as string) ??
+    supabaseUser.email?.split('@')[0] ??
+    'User'
+
   let onboarding_completed = false
   try {
+    // Upsert ensures the row always exists — safe to call on every login.
+    // `on conflict (id) do nothing` means existing rows are never overwritten.
     const { data } = await supabase
       .from('profiles')
+      .upsert(
+        {
+          id: supabaseUser.id,
+          display_name: displayName,
+          avatar_url: (meta['avatar_url'] as string) ?? null,
+        },
+        { onConflict: 'id', ignoreDuplicates: true },
+      )
       .select('onboarding_completed')
-      .eq('id', supabaseUser.id)
       .single()
+
     if (data) {
       onboarding_completed = (data as { onboarding_completed: boolean }).onboarding_completed ?? false
     }
@@ -128,11 +146,7 @@ async function mapSupabaseUser(supabaseUser: {
   return {
     id: supabaseUser.id,
     email: supabaseUser.email ?? '',
-    display_name:
-      (meta['name'] as string) ??
-      (meta['full_name'] as string) ??
-      supabaseUser.email?.split('@')[0] ??
-      'User',
+    display_name: displayName,
     avatar_url: (meta['avatar_url'] as string) ?? '',
     timezone: 'UTC',
     notification_preferences: {},
