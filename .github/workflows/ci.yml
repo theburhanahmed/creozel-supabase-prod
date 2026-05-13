@@ -77,3 +77,36 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d creozel_test -c "\dt public.*" | grep -E "profiles|teams|content_jobs|scheduled_posts|wallets"
+
+  # ─── Supabase: migrate + deploy edge functions (push to main only) ───────────
+  supabase-deploy:
+    name: Supabase (migrate + edge functions)
+    runs-on: ubuntu-latest
+    needs: [frontend, migrations]
+    # Only deploy on pushes to main — not on PRs or develop
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run database migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase db push --project-ref ${{ secrets.SUPABASE_PROJECT_REF }}
+
+      - name: Deploy edge functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase functions deploy generate-content \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
+          supabase functions deploy oauth-connect \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --no-verify-jwt
