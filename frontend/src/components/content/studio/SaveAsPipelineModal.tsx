@@ -1,7 +1,9 @@
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { CalendarClockIcon, InfoIcon, Loader2Icon, WorkflowIcon, XIcon } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '../../ui/Button'
 import type { StudioDraftConfig } from '../../../types'
+import { checkPipelineNameExists, savePipeline } from '../../../services/studioService'
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -160,10 +162,7 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
   onClose,
   onSaved,
 }) => {
-  // Suppress unused-variable warnings for props consumed by task 11.4
-  void currentConfig
-  void teamId
-  void onSaved
+
 
   const nameId = useId()
   const descId = useId()
@@ -176,6 +175,9 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
 
   // ── Debounced cron preview ─────────────────────────────────────────────────
   const [cronPreview, setCronPreview] = useState<string | null>(null)
+  // Tracks whether the debounce has fired at least once for the current schedule
+  // value, so we don't show "invalid" while the user is still typing.
+  const [cronDebounced, setCronDebounced] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Reset form when modal opens
@@ -185,6 +187,7 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
       setErrors({})
       setIsSubmitting(false)
       setCronPreview(null)
+      setCronDebounced(false)
     }
   }, [isOpen])
 
@@ -194,11 +197,16 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
 
     if (!form.schedule.trim()) {
       setCronPreview(null)
+      setCronDebounced(false)
       return
     }
 
+    // Mark as not-yet-debounced while the user is still typing
+    setCronDebounced(false)
+
     debounceRef.current = setTimeout(() => {
       setCronPreview(parseCronToHuman(form.schedule))
+      setCronDebounced(true)
     }, 480) // slightly under 500 ms to ensure the requirement is met
 
     return () => {
@@ -248,18 +256,72 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
   }, [form.name])
 
   // ── Submit ─────────────────────────────────────────────────────────────────
-  // NOTE: The actual save logic (studioService.savePipeline) is wired in task 11.4.
-  // This handler validates and sets submitting state; task 11.4 will extend it.
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
       if (!validate()) return
+
       setIsSubmitting(true)
-      // Task 11.4 will replace this placeholder with the real save call.
-      // For now, we just reset submitting state so the modal remains functional.
+
+      // Req 12.9 — check for duplicate name before inserting
+      const nameExists = await checkPipelineNameExists(teamId, form.name.trim())
+      if (nameExists) {
+        setErrors({ name: 'A pipeline with this name already exists.' })
+        setIsSubmitting(false)
+        return
+      }
+
+      // Req 12.4 — build the pipeline config from currentConfig
+      const pipelineConfig: Parameters<typeof savePipeline>[1]['pipelineConfig'] = {
+        contentCategory: currentConfig.contentCategory,
+        contentFormat: currentConfig.contentFormat,
+        platform: currentConfig.platform,
+        tone: currentConfig.tone,
+        length: currentConfig.length,
+        advancedOptions: {
+          model: null,
+          resolution: null,
+          style: null,
+          negativePrompt: null,
+          seed: null,
+          voice: null,
+          pitch: null,
+          stability: null,
+          outputFormat: null,
+          aspectRatio: null,
+          includeBRoll: null,
+          brandVoice: null,
+          language: null,
+        },
+        platformConstraints: {
+          characterLimit: null,
+          aspectRatio: null,
+          durationLimitSeconds: null,
+          fileSizeLimitMb: null,
+          acceptedFileFormats: [],
+        },
+      }
+
+      const result = await savePipeline(teamId, {
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        schedule: form.schedule.trim() || null,
+        pipelineConfig,
+      })
+
       setIsSubmitting(false)
+
+      if (result) {
+        // Req 12.5 — success: show toast and close modal
+        toast.success('Pipeline saved successfully!')
+        onSaved()
+        onClose()
+      } else {
+        // Req 12.6 — failure: show error toast, keep modal open with values preserved
+        toast.error('Failed to save pipeline. Please try again.')
+      }
     },
-    [validate],
+    [validate, teamId, form, currentConfig, onSaved, onClose],
   )
 
   // ── Render guard ───────────────────────────────────────────────────────────
@@ -488,8 +550,9 @@ export const SaveAsPipelineModal: React.FC<SaveAsPipelineModalProps> = ({
                       {cronPreview}
                     </p>
                   ) : (
-                    // Only show "invalid" after the debounce has fired (cronPreview is null but schedule has value)
-                    form.schedule.trim().length > 0 && (
+                    // Only show "invalid" after the debounce has fired — avoids
+                    // showing an error while the user is still typing (Req 12.3)
+                    cronDebounced && (
                       <p className="text-xs text-amber-500 dark:text-amber-400">
                         Invalid cron expression — check the format and try again.
                       </p>

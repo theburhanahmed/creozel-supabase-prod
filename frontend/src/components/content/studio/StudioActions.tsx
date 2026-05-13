@@ -40,6 +40,19 @@ export interface StudioActionsProps {
  *   in addition to the native `disabled` attribute, for maximum screen-reader
  *   compatibility.
  * - aria-busy is set on the Generate button while generation is in progress.
+ *
+ * Wiring (Requirement 9.7 — task 11.5):
+ * The `canGenerate` prop MUST be computed via `computeCanGenerate()` from
+ * `./studioCanGenerate`. That function gates on ALL of the following:
+ *   - useCreditEstimate.isLoading === false  (Req 9.7 — primary gate)
+ *   - useCreditEstimate.isUnavailable === false
+ *   - estimatedCost <= balance (both non-null)
+ *   - useStudioState.validationErrors is empty
+ *   - prompt is non-empty
+ *
+ * ConfigurationPanel (task 15) is responsible for calling useCreditEstimate
+ * and useStudioState, computing canGenerate, and passing it here.
+ * See studioCanGenerate.ts for the full usage example.
  */
 export const StudioActions: React.FC<StudioActionsProps> = ({
   canGenerate,
