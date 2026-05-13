@@ -7,15 +7,14 @@ import {
   MicIcon,
   SparklesIcon,
   XCircleIcon,
-  CopyIcon,
-  DownloadIcon,
   FolderIcon,
-  CheckIcon,
   AlertCircleIcon,
   Loader2Icon,
   ChevronDownIcon,
   RefreshCwIcon,
 } from 'lucide-react'
+import { StatusBadge } from '../../components/content/StatusBadge'
+import { ResultViewer } from '../../components/content/ResultViewer'
 import { useAppContext } from '../../context/AppContext'
 import {
   createContentJob,
@@ -115,119 +114,6 @@ const fieldClass =
   'w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-[#3FE0A5]/20 focus:border-[#3FE0A5] transition-all'
 
 const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
-
-// ─── Job Status Badge ─────────────────────────────────────────────────────────
-const StatusBadge: React.FC<{ status: ContentJob['status'] }> = ({ status }) => {
-  const styles: Record<string, string> = {
-    pending:   'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300',
-    running:   'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
-    completed: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
-    failed:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  }
-  return (
-    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${styles[status] ?? ''}`}>
-      {status}
-    </span>
-  )
-}
-
-// ─── Result Viewer ────────────────────────────────────────────────────────────
-const ResultViewer: React.FC<{ job: ContentJob }> = ({ job }) => {
-  const [copied, setCopied] = useState(false)
-
-  const handleCopy = async () => {
-    if (!job.result_url) return
-    try {
-      const res = await fetch(job.result_url)
-      const text = await res.text()
-      await navigator.clipboard.writeText(text)
-      setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
-    } catch {
-      toast.error('Failed to copy to clipboard')
-    }
-  }
-
-  if (job.type === 'image' && job.result_url) {
-    return (
-      <div className="space-y-3">
-        <img
-          src={job.result_url}
-          alt="Generated image"
-          className="w-full rounded-xl object-cover max-h-96"
-        />
-        <div className="flex gap-2">
-          <a
-            href={job.result_url}
-            download
-            className="flex items-center gap-2 px-4 py-2 glass-enhanced rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white/50 transition-colors"
-          >
-            <DownloadIcon size={16} />
-            Download
-          </a>
-        </div>
-      </div>
-    )
-  }
-
-  if (job.type === 'audio' && job.result_url) {
-    return (
-      <div className="space-y-3">
-        <audio controls className="w-full" src={job.result_url}>
-          Your browser does not support audio playback.
-        </audio>
-        <a
-          href={job.result_url}
-          download
-          className="inline-flex items-center gap-2 px-4 py-2 glass-enhanced rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white/50 transition-colors"
-        >
-          <DownloadIcon size={16} />
-          Download MP3
-        </a>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 max-h-64 overflow-y-auto">
-        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-          {job.result_url ? (
-            <a
-              href={job.result_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[#3FE0A5] hover:underline"
-            >
-              View generated content ↗
-            </a>
-          ) : (
-            'Content generated successfully.'
-          )}
-        </p>
-      </div>
-      <div className="flex gap-2">
-        <button
-          onClick={() => void handleCopy()}
-          className="flex items-center gap-2 px-4 py-2 glass-enhanced rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white/50 transition-colors"
-        >
-          {copied ? <CheckIcon size={16} className="text-green-500" /> : <CopyIcon size={16} />}
-          {copied ? 'Copied!' : 'Copy'}
-        </button>
-        {job.result_url && (
-          <a
-            href={job.result_url}
-            download
-            className="flex items-center gap-2 px-4 py-2 glass-enhanced rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-white/50 transition-colors"
-          >
-            <DownloadIcon size={16} />
-            Download
-          </a>
-        )}
-      </div>
-    </div>
-  )
-}
 
 // ─── ContentHub ───────────────────────────────────────────────────────────────
 export const ContentHub: React.FC = () => {

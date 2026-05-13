@@ -77,28 +77,7 @@ This plan converts the Content Generation Studio design into incremental coding 
   - Sub-tasks:
     - [x] 6.1 Implement useStudioState(teamId): owns all form state (mode, prompt, contentCategory, contentFormat, platform, tone, length, advanced options, repurposing fields, activeJob, isGenerating, validationErrors); reads/writes {teamId}:studio:draftConfig from localStorage on mount and with 500 ms debounce on change; falls back to defaults for missing/invalid/Phase-2+ fields; implements buildMetadata(), validateBeforeGenerate(), applyTemplate(), reuseJobConfig(), and clearDraft()
     - [x] 6.2 Implement useContentFormats(category): returns array of [format, entry] pairs for the given category from CONTENT_FORMAT_REGISTRY, memoised with useMemo, sorted by label
-    - [x] 6.3 Implement usePlatformConstraints(format, platform): returns PlatformConstraints or null from CONTENT_FORMAT_REGISTRY, memoised with useMemo
-    - [x] 6.4 Implement useCreditEstimate(category, format, advancedOptions): debounced 400 ms; queries pricing_config table; maps ContentCategory to legacy ContentType for the query; returns { estimatedCost, isLoading, isUnavailable }; sets isUnavailable=true and estimatedCost=null on fetch failure or 5 s timeout
-    - [x] 6.5 Implement useRepurposingSources(teamId, userId): calls studioService.getRepurposingSources; returns { sources, isLoading, error, refetch }
-    - [x] 6.6 Implement useJobRealtime(jobId, onUpdate): wraps subscribeToJob from contentService in a useEffect that depends on jobId; calls unsubscribe in cleanup; no-ops when jobId is null
-    - [x] 6.7 Implement useTemplates(teamId, categoryFilter, platformFilter): calls studioService.getTemplates on mount and when filters change; applies category and platform filters client-side; returns { templates, isLoading, error, refetch }
-
-- [x] 7. PBT — Hooks (Properties 4–12, 14–15)
-  - Description: Write property-based tests for useStudioState, usePlatformConstraints, useTemplates, and related hook logic. These tests validate the correctness guarantees that the hooks must uphold across all valid inputs.
-  - Files: frontend/src/__tests__/pbt/draftConfigRoundTrip.pbt.test.ts, frontend/src/__tests__/pbt/phaseGate.pbt.test.ts, frontend/src/__tests__/pbt/buildMetadata.pbt.test.ts, frontend/src/__tests__/pbt/promptLengthGate.pbt.test.ts, frontend/src/__tests__/pbt/creditsGate.pbt.test.ts, frontend/src/__tests__/pbt/templateApplication.pbt.test.ts, frontend/src/__tests__/pbt/reuseConfig.pbt.test.ts, frontend/src/__tests__/pbt/repurposingTargets.pbt.test.ts, frontend/src/__tests__/pbt/wordCountValidation.pbt.test.ts, frontend/src/__tests__/pbt/advancedOptionsPersistence.pbt.test.ts, frontend/src/__tests__/pbt/templateFiltering.pbt.test.ts
-  - Requirements: 2.5, 3.7, 3.8, 6.2, 7.7, 8.4, 8.5, 9.5, 9.6, 13.4, 17.4, 18.1, 18.3, 18.7
-  - Dependencies: 6
-  - Sub-tasks:
-    - [x] 7.1 Write Properties 4 and 5 (draft config round-trip and phase gate): Property 4 asserts that any valid StudioDraftConfig written to localStorage and read back via useStudioState produces identical field values; Property 5 asserts that any contentFormat not in the Phase 1 union causes useStudioState to initialise to text/short_form_post
-    - [x] 7.2 Write Properties 6 and 7 (metadata completeness and prompt length gate): Property 6 asserts buildMetadata() always returns a ContentFormatMetadataSchema with all required fields non-null and schemaVersion===1; Property 7 asserts that any prompt with length > 4000 sets canGenerate to false
-    - [x] 7.3 Write Property 8 (insufficient credits gate): for any configuration where estimatedCost > balance (both non-null), assert canGenerate is false
-    - [x] 7.4 Write Properties 9 and 10 (template application and reuse config): Property 9 asserts applyTemplate overwrites all five fields regardless of prior state; Property 10 asserts reuseJobConfig populates all metadata fields with legacy fallback when contentFormat is absent
-    - [x] 7.5 Write Properties 11 and 12 (repurposing target validity and custom word count): Property 11 asserts RepurposingTargetSelector only shows valid repurposing paths for the source format; Property 12 asserts validateBeforeGenerate returns false when maxWords < minWords
-    - [x] 7.6 Write Properties 14 and 15 (advanced options persistence and template filter correctness): Property 14 asserts any valid advanced options object round-trips through localStorage unchanged; Property 15 asserts useTemplates never returns a template that fails the active category or platform filter
-    - [x] 7.7 Run npx vitest --run src/__tests__/pbt/ and confirm all property tests pass
-
-- [ ] 8. Shared Extracted Components (StatusBadge and ResultViewer)
-  - Description: Extract StatusBadge and ResultViewer from ContentHub into standalone files under src/components/content/. These shared components are used by both the new Studio and the existing ContentHub, so they must be extracted before any Studio output components are built.
+32  - Description: Extract StatusBadge and ResultViewer from ContentHub into standalone files under src/components/content/. These shared components are used by both the new Studio and the existing ContentHub, so they must be extracted before any Studio output components are built.
   - Files: frontend/src/components/content/StatusBadge.tsx, frontend/src/components/content/ResultViewer.tsx
   - Requirements: 11.1, 11.2, 11.3, 11.4, 15.1, 15.5
   - Dependencies: 2
@@ -106,34 +85,34 @@ This plan converts the Content Generation Studio design into incremental coding 
     - [x] 8.1 Extract StatusBadge from ContentHub into src/components/content/StatusBadge.tsx; accept a status prop typed as ContentJob["status"]; render a styled badge for pending, running, completed, failed, and cancelled states; add aria-label for accessibility
     - [x] 8.2 Extract ResultViewer from ContentHub into src/components/content/ResultViewer.tsx; split into TextResultViewer (renders fetched text inline), ImageResultViewer (renders img with descriptive alt), AudioResultViewer (renders audio element with native controls), and VideoResultViewer (renders fetched script text with video label)
     - [x] 8.3 Add a 10-second timeout to the result_url fetch in TextResultViewer and VideoResultViewer; on timeout or fetch failure display an error message and a fallback link to result_url
-    - [ ] 8.4 Update ContentHub.tsx to import StatusBadge and ResultViewer from their new paths instead of defining them inline; verify ContentHub still renders correctly
-    - [~] 8.5 Run npx tsc --noEmit and confirm zero new type errors
+    - [x] 8.4 Update ContentHub.tsx to import StatusBadge and ResultViewer from their new paths instead of defining them inline; verify ContentHub still renders correctly
+    - [x] 8.5 Run npx tsc --noEmit and confirm zero new type errors
 
-- [ ] 9. Core Studio UI Components (Layout, Header, Mode Toggle, Category Tabs, Format Grid, Prompt Input)
+- [x] 9. Core Studio UI Components (Layout, Header, Mode Toggle, Category Tabs, Format Grid, Prompt Input)
   - Description: Build the structural and primary input components of the Studio. These form the skeleton of the Configuration Panel and must be in place before the secondary controls (platform, tone, length) are added.
   - Files: frontend/src/components/content/studio/StudioHeader.tsx, frontend/src/components/content/studio/StudioLayout.tsx, frontend/src/components/content/studio/StudioModeToggle.tsx, frontend/src/components/content/studio/ConfigurationPanel.tsx, frontend/src/components/content/studio/ContentCategoryTabs.tsx, frontend/src/components/content/studio/ContentFormatGrid.tsx, frontend/src/components/content/studio/FormatCard.tsx, frontend/src/components/content/studio/PromptInput.tsx
   - Requirements: 1.1, 1.2, 1.3, 1.4, 1.5, 2.1, 2.2, 2.3, 2.4, 2.5, 2.6, 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 15.1, 15.2
   - Dependencies: 2, 3, 6, 8
   - Sub-tasks:
-    - [~] 9.1 Implement StudioHeader (displays team name from props, breadcrumb) and StudioLayout (two-panel responsive wrapper: side-by-side at >= 1024 px, stacked below; each panel min-width 300 px; accepts configPanel and outputPanel ReactNode props)
-    - [~] 9.2 Implement StudioModeToggle as a segmented control with "Create" and "Repurpose" options; accepts mode and onChange props; apply visible selected-state indicator; keyboard accessible
-    - [~] 9.3 Implement ContentCategoryTabs: render five tabs (Text, Image, Video, Audio, Story) each with a unique icon and accent colour; display credit cost per category from creditsByCategory prop; show "?" when creditsUnavailable is true; apply visible selected-state indicator on active tab
-    - [~] 9.4 Implement ContentFormatGrid and FormatCard: grid renders all Phase 1 formats for the selected category using useContentFormats; each FormatCard shows label, description, and compatible platform tags; apply selected-state border highlight; keyboard accessible via onClick
-    - [~] 9.5 Implement PromptInput: multi-line textarea with minimum 5 visible rows and user-resizable height; live character count display in {current}/{max} format updating on every keystroke; show inline validation error when error prop is set; show visible warning and disable Generate when length > 4000; update placeholder text when contentCategory changes
-    - [~] 9.6 Implement NoTeamEmptyState component: shown when activeTeam is null; displays explanatory message and CTA button navigating to team management; prevents Configuration Panel from rendering
+    - [x] 9.1 Implement StudioHeader (displays team name from props, breadcrumb) and StudioLayout (two-panel responsive wrapper: side-by-side at >= 1024 px, stacked below; each panel min-width 300 px; accepts configPanel and outputPanel ReactNode props)
+    - [x] 9.2 Implement StudioModeToggle as a segmented control with "Create" and "Repurpose" options; accepts mode and onChange props; apply visible selected-state indicator; keyboard accessible
+    - [x] 9.3 Implement ContentCategoryTabs: render five tabs (Text, Image, Video, Audio, Story) each with a unique icon and accent colour; display credit cost per category from creditsByCategory prop; show "?" when creditsUnavailable is true; apply visible selected-state indicator on active tab
+    - [x] 9.4 Implement ContentFormatGrid and FormatCard: grid renders all Phase 1 formats for the selected category using useContentFormats; each FormatCard shows label, description, and compatible platform tags; apply selected-state border highlight; keyboard accessible via onClick
+    - [x] 9.5 Implement PromptInput: multi-line textarea with minimum 5 visible rows and user-resizable height; live character count display in {current}/{max} format updating on every keystroke; show inline validation error when error prop is set; show visible warning and disable Generate when length > 4000; update placeholder text when contentCategory changes
+    - [x] 9.6 Implement NoTeamEmptyState component: shown when activeTeam is null; displays explanatory message and CTA button navigating to team management; prevents Configuration Panel from rendering
 
-- [ ] 10. Platform, Tone, Length, and Advanced Options Components
+- [x] 10. Platform, Tone, Length, and Advanced Options Components
   - Description: Build the secondary configuration controls. PlatformSelector and PlatformConstraintHint implement the format-driven platform filtering and constraint display. ToneSelector, LengthSelector, and AdvancedOptionsPanel are refactored from ContentHub to accept props instead of owning state.
   - Files: frontend/src/components/content/studio/PlatformSelector.tsx, frontend/src/components/content/studio/PlatformConstraintHint.tsx, frontend/src/components/content/studio/ToneSelector.tsx, frontend/src/components/content/studio/LengthSelector.tsx, frontend/src/components/content/studio/AdvancedOptionsPanel.tsx
   - Requirements: 4.1, 4.2, 4.3, 4.4, 4.5, 4.6, 4.7, 4.8, 4.9, 5.1, 5.2, 5.3, 5.4, 5.5, 6.1, 6.2, 6.3, 6.4, 6.5, 6.6, 6.7, 7.1, 7.2, 7.3, 7.4, 7.5, 7.6, 7.7, 15.1, 15.2
   - Dependencies: 2, 3, 6, 9
   - Sub-tasks:
-    - [~] 10.1 Implement PlatformSelector: renders 10 platform options filtered to availablePlatforms prop; defaults to General when current selection is not in the compatible set; applies visible selected-state indicator; all options have aria-label; keyboard accessible
-    - [~] 10.2 Implement PlatformConstraintHint: reads constraints from usePlatformConstraints; displays character limit, aspect ratio, duration limit, and file format as inline hints adjacent to the platform selector; shows "No specific constraints for this combination" when constraints is null
-    - [~] 10.3 Implement ToneSelector: renders exactly six tone options (Professional, Casual, Humorous, Inspirational, Persuasive, Informative); defaults to Professional; shows "Brand voice active" notice when brandVoiceActive prop is true and brand voice guidelines are non-null; persists selection via useStudioState
-    - [~] 10.4 Implement LengthSelector: renders per-category controls (text: Short/Medium/Long/Custom presets with custom min/max word count inputs; video: Short/Medium/Long scene count; image: quantity 1-4 and resolution selector; audio: speaking rate slider 0.5x-2.0x step 0.25x); shows inline validation error when maxWords < minWords; defaults per Requirement 6.7
-    - [~] 10.5 Implement AdvancedOptionsPanel: collapsible panel defaulting to collapsed; renders TextAdvancedOptions, ImageAdvancedOptions, VideoAdvancedOptions, or AudioAdvancedOptions sub-panels based on category prop; AudioAdvancedOptions shows "Failed to load voices" with retry button when voicesFailed is true; all sub-panels receive options and onChange props (no internal state)
-    - [~] 10.6 Run npx tsc --noEmit and confirm zero new type errors introduced by these components
+    - [x] 10.1 Implement PlatformSelector: renders 10 platform options filtered to availablePlatforms prop; defaults to General when current selection is not in the compatible set; applies visible selected-state indicator; all options have aria-label; keyboard accessible
+    - [x] 10.2 Implement PlatformConstraintHint: reads constraints from usePlatformConstraints; displays character limit, aspect ratio, duration limit, and file format as inline hints adjacent to the platform selector; shows "No specific constraints for this combination" when constraints is null
+    - [x] 10.3 Implement ToneSelector: renders exactly six tone options (Professional, Casual, Humorous, Inspirational, Persuasive, Informative); defaults to Professional; shows "Brand voice active" notice when brandVoiceActive prop is true and brand voice guidelines are non-null; persists selection via useStudioState
+    - [x] 10.4 Implement LengthSelector: renders per-category controls (text: Short/Medium/Long/Custom presets with custom min/max word count inputs; video: Short/Medium/Long scene count; image: quantity 1-4 and resolution selector; audio: speaking rate slider 0.5x-2.0x step 0.25x); shows inline validation error when maxWords < minWords; defaults per Requirement 6.7
+    - [x] 10.5 Implement AdvancedOptionsPanel: collapsible panel defaulting to collapsed; renders TextAdvancedOptions, ImageAdvancedOptions, VideoAdvancedOptions, or AudioAdvancedOptions sub-panels based on category prop; AudioAdvancedOptions shows "Failed to load voices" with retry button when voicesFailed is true; all sub-panels receive options and onChange props (no internal state)
+    - [x] 10.6 Run npx tsc --noEmit and confirm zero new type errors introduced by these components
 
 - [ ] 11. Credit Estimate Bar, Studio Actions, and Save as Pipeline Modal
   - Description: Build the bottom bar of the Configuration Panel. CreditEstimateBar shows the real-time cost estimate and current balance. StudioActions renders the Generate and Save as Pipeline buttons with all gate conditions. SaveAsPipelineModal collects pipeline name, description, and schedule.
@@ -141,9 +120,9 @@ This plan converts the Content Generation Studio design into incremental coding 
   - Requirements: 9.1, 9.2, 9.3, 9.4, 9.5, 9.6, 9.7, 10.1, 10.2, 10.7, 10.9, 12.1, 12.2, 12.3, 12.4, 12.5, 12.6, 12.8, 12.9, 15.1, 15.2
   - Dependencies: 2, 5, 6, 9, 10
   - Sub-tasks:
-    - [~] 11.1 Implement CreditEstimateBar: displays estimated cost to two decimal places (e.g., "3.50 credits"); shows loading indicator while isLoading is true; shows "Cost estimate unavailable" when isUnavailable is true; displays current balance in "{balance} credits available" format; shows inline warning and "Top Up Credits" link when estimatedCost > balance
-    - [~] 11.2 Implement StudioActions: renders Generate button (disabled when canGenerate is false or isGenerating is true; shows loading indicator during generation) and Save as Pipeline button side by side; Generate button activatable via Enter key
-    - [~] 11.3 Implement SaveAsPipelineModal: collects pipeline name (required, max 100 chars with inline validation), optional description (max 500 chars), and optional cron schedule free-text input; updates human-readable schedule preview within 500 ms of cron input change
+    - [x] 11.1 Implement CreditEstimateBar: displays estimated cost to two decimal places (e.g., "3.50 credits"); shows loading indicator while isLoading is true; shows "Cost estimate unavailable" when isUnavailable is true; displays current balance in "{balance} credits available" format; shows inline warning and "Top Up Credits" link when estimatedCost > balance
+    - [x] 11.2 Implement StudioActions: renders Generate button (disabled when canGenerate is false or isGenerating is true; shows loading indicator during generation) and Save as Pipeline button side by side; Generate button activatable via Enter key
+    - [-] 11.3 Implement SaveAsPipelineModal: collects pipeline name (required, max 100 chars with inline validation), optional description (max 500 chars), and optional cron schedule free-text input; updates human-readable schedule preview within 500 ms of cron input change
     - [~] 11.4 Wire SaveAsPipelineModal submit to studioService.savePipeline; on success show success toast and close modal; on failure show error toast and keep modal open with all values preserved; on duplicate name show inline error in name field without submitting
     - [~] 11.5 Connect CreditEstimateBar and StudioActions to useCreditEstimate and useStudioState; ensure Generate button is disabled while credit estimate is loading (Requirement 9.7)
 

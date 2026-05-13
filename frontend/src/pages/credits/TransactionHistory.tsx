@@ -7,8 +7,17 @@ import type { CreditTransaction } from '../../types'
 const TYPE_STYLES: Record<string, string> = {
   purchase:  'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
   deduction: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
-  refund:    'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  refund:    'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
   bonus:     'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+}
+
+function formatLocalTimestamp(isoString: string): string {
+  const d = new Date(isoString)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  )
 }
 
 export const TransactionHistory: React.FC = () => {
@@ -44,7 +53,7 @@ export const TransactionHistory: React.FC = () => {
                 </span>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm text-gray-700 dark:text-gray-300 truncate">{tx.description ?? 'Credit transaction'}</p>
-                  <p className="text-xs text-gray-400">{new Date(tx.created_at).toLocaleString()}</p>
+                  <p className="text-xs text-gray-400">{formatLocalTimestamp(tx.created_at)}</p>
                 </div>
                 <span className={`text-sm font-bold flex-shrink-0 ${tx.amount > 0 ? 'text-green-500' : 'text-red-500'}`}>
                   {tx.amount > 0 ? '+' : ''}{tx.amount}

@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
-import type { Wallet, CreditTransaction } from '../types'
+import type { Wallet, CreditTransaction, DodoProduct } from '../types'
 
 export async function getWallet(userId: string): Promise<Wallet | null> {
   try {
@@ -10,6 +10,23 @@ export async function getWallet(userId: string): Promise<Wallet | null> {
   } catch (error: unknown) {
     reportError('creditsService.getWallet', error)
     return null
+  }
+}
+
+export async function getCreditPacks(): Promise<DodoProduct[]> {
+  try {
+    const { data, error } = await supabase
+      .from('dodo_products')
+      .select('*')
+      .eq('is_active', true)
+      .order('credits', { ascending: true })
+    if (error) { reportError('creditsService.getCreditPacks', error); return [] }
+    return ((data ?? []) as DodoProduct[]).filter(
+      (p) => p.credits > 0 && p.product_id !== ''
+    )
+  } catch (error: unknown) {
+    reportError('creditsService.getCreditPacks', error)
+    return []
   }
 }
 

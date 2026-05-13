@@ -191,7 +191,7 @@ Add collapsible advanced options panels to each content type tab in `ContentHub`
 
 ### Sub-tasks
 
-- [ ] 12.1 — Add a collapsible "Advanced options" section to the text generation panel with: AI model selector (GPT-4, GPT-3.5), tone selector, output format selector, word count min/max inputs (1–10,000, max ≥ min), language selector, brand voice toggle; default to collapsed
+- [x] 12.1 — Add a collapsible "Advanced options" section to the text generation panel with: AI model selector (GPT-4, GPT-3.5), tone selector, output format selector, word count min/max inputs (1–10,000, max ≥ min), language selector, brand voice toggle; default to collapsed
 - [x] 12.2 — Add a collapsible "Advanced options" section to the image generation panel with: AI provider selector (DALL-E 3, Stable Diffusion), resolution selector, style selector, negative prompt input (max 500 chars), number of images selector (1–4), seed input (0–2,147,483,647); default to collapsed
 - [x] 12.3 — Add a collapsible "Advanced options" section to the video generation panel with: AI model selector, scene count selector (1–10), duration per scene selector (15s/30s/60s), aspect ratio selector (16:9/9:16/1:1), B-roll toggle, brand voice toggle; default to collapsed
 - [x] 12.4 — Add a collapsible "Advanced options" section to the audio generation panel with: TTS provider selector (ElevenLabs/Whisper), voice selector (dynamic from provider), speaking rate slider (0.5–2.0), pitch adjustment slider (−10 to +10), output format selector (MP3/WAV), stability/clarity slider (0–100, ElevenLabs only); if voice list fetch fails, show "Failed to load voices" and disable selector with a retry button; default to collapsed
@@ -253,18 +253,18 @@ Install `fast-check` and write property-based tests for all 13 correctness prope
 
 - [x] 16.1 — Install `fast-check` as a dev dependency: `npm install --save-dev fast-check` in `frontend/`
 - [x] 16.2 — Write PBT for **Property 1** (team selection by role priority): for any list of memberships, `selectActiveTeam` always returns the highest-priority role with earliest `created_at` tiebreaker (100 runs)
-- [ ] 16.3 — Write PBT for **Property 2** (team switch clears stale data): after `setActiveTeam(B)`, no state slice contains rows with `team_id` equal to team A's id (100 runs)
-- [ ] 16.4 — Write PBT for **Property 3** (navItems order invariant): for any render of `MainNavigation`, the top-level order matches the spec and Social Accounts/Media Library are leaf nodes (100 runs)
-- [ ] 16.5 — Write PBT for **Property 4** (media service team_id propagation): for any `activeTeam`, every `mediaService` call passes `teamId = activeTeam.id` (100 runs)
-- [ ] 16.6 — Write PBT for **Property 5** (storage path format): for any `teamId`, `userId`, `filename`, the path matches `{teamId}/{userId}/{epoch_ms}_{filename}` (100 runs)
-- [ ] 16.7 — Write PBT for **Property 6** (null activeTeam guard): for any call with `activeTeam = null`, service functions return `null`/`[]` without calling Supabase (100 runs)
-- [ ] 16.8 — Write PBT for **Property 7** (social service team_id propagation): for any `activeTeam`, every `socialService` call passes `teamId = activeTeam.id` and OAuth state contains `team_id` (100 runs)
-- [ ] 16.9 — Write PBT for **Property 8** (OAuth callback team_id insertion): for any valid state with non-empty `team_id`, the Edge Function inserts a row with that `team_id` (100 runs)
-- [ ] 16.10 — Write PBT for **Property 9** (OAuth callback rejects invalid state): for any absent/malformed/empty-team_id state, the Edge Function returns HTTP 400 and inserts no row (100 runs)
-- [ ] 16.11 — Write PBT for **Property 10** (advanced options metadata round-trip): for any advanced options object, all fields appear in `content_jobs.metadata` and are passed to the AI provider (100 runs)
-- [ ] 16.12 — Write PBT for **Property 11** (advanced options localStorage round-trip): for any options object and team_id/content_type, serialise then deserialise produces a deeply equal object (100 runs)
-- [ ] 16.13 — Write PBT for **Property 12** (activeTeam localStorage persistence round-trip): switching to any team writes its id to localStorage; mounting with that value restores the same team (100 runs)
-- [ ] 16.14 — Write PBT for **Property 13** (service safe defaults on error): for any service function, when Supabase throws, the function returns `null`/`[]`/`false` and does not propagate the exception (100 runs)
+- [x] 16.3 — Write PBT for **Property 2** (team switch clears stale data): after `setActiveTeam(B)`, no state slice contains rows with `team_id` equal to team A's id (100 runs)
+- [x] 16.4 — Write PBT for **Property 3** (navItems order invariant): for any render of `MainNavigation`, the top-level order matches the spec and Social Accounts/Media Library are leaf nodes (100 runs)
+- [x] 16.5 — Write PBT for **Property 4** (media service team_id propagation): for any `activeTeam`, every `mediaService` call passes `teamId = activeTeam.id` (100 runs)
+- [x] 16.6 — Write PBT for **Property 5** (storage path format): for any `teamId`, `userId`, `filename`, the path matches `{teamId}/{userId}/{epoch_ms}_{filename}` (100 runs)
+- [x] 16.7 — Write PBT for **Property 6** (null activeTeam guard): for any call with `activeTeam = null`, service functions return `null`/`[]` without calling Supabase (100 runs)
+- [x] 16.8 — Write PBT for **Property 7** (social service team_id propagation): for any `activeTeam`, every `socialService` call passes `teamId = activeTeam.id` and OAuth state contains `team_id` (100 runs)
+- [x] 16.9 — Write PBT for **Property 8** (OAuth callback team_id insertion): for any valid state with non-empty `team_id`, the Edge Function inserts a row with that `team_id` (100 runs)
+- [x] 16.10 — Write PBT for **Property 9** (OAuth callback rejects invalid state): for any absent/malformed/empty-team_id state, the Edge Function returns HTTP 400 and inserts no row (100 runs)
+- [x] 16.11 — Write PBT for **Property 10** (advanced options metadata round-trip): for any advanced options object, all fields appear in `content_jobs.metadata` and are passed to the AI provider (100 runs)
+- [x] 16.12 — Write PBT for **Property 11** (advanced options localStorage round-trip): for any options object and team_id/content_type, serialise then deserialise produces a deeply equal object (100 runs)
+- [x] 16.13 — Write PBT for **Property 12** (activeTeam localStorage persistence round-trip): switching to any team writes its id to localStorage; mounting with that value restores the same team (100 runs)
+- [x] 16.14 — Write PBT for **Property 13** (service safe defaults on error): for any service function, when Supabase throws, the function returns `null`/`[]`/`false` and does not propagate the exception (100 runs)
 
 ---
 
@@ -277,5 +277,5 @@ Verify the entire frontend compiles with zero TypeScript errors after all change
 
 ### Sub-tasks
 
-- [ ] 17.1 — Run `npx tsc --noEmit` from `frontend/` and confirm exit code 0 with zero errors
-- [ ] 17.2 — Fix any type errors introduced by this spec before marking this task complete
+- [x] 17.1 — Run `npx tsc --noEmit` from `frontend/` and confirm exit code 0 with zero errors
+- [x] 17.2 — Fix any type errors introduced by this spec before marking this task complete

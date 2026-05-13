@@ -207,6 +207,16 @@ export interface CreditTransaction {
   created_at: string
 }
 
+export interface DodoProduct {
+  id: string
+  product_id: string
+  label: string
+  credits: number
+  price_display: string
+  is_active: boolean
+  is_popular: boolean
+}
+
 export interface PricingConfig {
   id: string
   content_type: ContentType
@@ -379,6 +389,11 @@ export const DEFAULT_AUDIO_OPTIONS: AudioAdvancedOptions = {
   pitchAdjustment: 0,
   outputFormat: 'mp3',
   stabilityClarity: 50,
+}
+
+export interface VoiceOption {
+  voice_id: string
+  name: string
 }
 
 // ─── Content Generation Studio Types ─────────────────────────────────────────
