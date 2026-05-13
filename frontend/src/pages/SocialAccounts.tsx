@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   InstagramIcon,
@@ -12,6 +13,7 @@ import {
   AlertCircleIcon,
   RefreshCwIcon,
   ExternalLinkIcon,
+  UsersIcon,
 } from 'lucide-react'
 import { useAppContext } from '../context/AppContext'
 import { getSocialConnections, disconnectSocialAccount, getOAuthUrl } from '../services/socialService'
@@ -76,31 +78,43 @@ const PLATFORMS: Array<{
 ]
 
 export const SocialAccounts: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
+  const navigate = useNavigate()
   const [connections, setConnections] = useState<SocialConnection[]>([])
   const [loading, setLoading]         = useState(true)
   const [disconnecting, setDisconnecting] = useState<string | null>(null)
 
+  // Task 8.4: Clear connections immediately when activeTeam changes
+  useEffect(() => {
+    setConnections([])
+  }, [activeTeam])
+
   const loadConnections = useCallback(async () => {
-    if (!user) return
+    if (!activeTeam) return
     setLoading(true)
-    const data = await getSocialConnections(user.id)
+    const data = await getSocialConnections(activeTeam.id)
     setConnections(data)
     setLoading(false)
-  }, [user])
+  }, [activeTeam])
 
   useEffect(() => {
+    if (!activeTeam) {
+      setLoading(false)
+      return
+    }
     void loadConnections()
-  }, [loadConnections])
+  }, [loadConnections, activeTeam])
 
   const handleConnect = (platform: SocialPlatform) => {
-    const url = getOAuthUrl(platform)
+    if (!user || !activeTeam) return
+    const url = getOAuthUrl(platform, user.id, activeTeam.id)
     window.location.href = url
   }
 
   const handleDisconnect = async (connection: SocialConnection) => {
+    if (!activeTeam) return
     setDisconnecting(connection.id)
-    const ok = await disconnectSocialAccount(connection.id)
+    const ok = await disconnectSocialAccount(connection.id, activeTeam.id)
     setDisconnecting(null)
     if (ok) {
       toast.success(`${connection.account_name} disconnected`)
@@ -114,13 +128,39 @@ export const SocialAccounts: React.FC = () => {
     connections.filter((c) => c.is_active).map((c) => c.platform),
   )
 
+  // Task 8.1: Null-team empty state — do not render connections list
+  if (!activeTeam) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-6 text-center px-4">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-gray-200 to-gray-300 dark:from-gray-700 dark:to-gray-800 flex items-center justify-center">
+          <UsersIcon size={32} className="text-gray-400 dark:text-gray-500" />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
+            A team is required to manage social accounts
+          </h2>
+          <p className="text-gray-500 dark:text-gray-400 text-sm max-w-sm">
+            Create or join a team to connect your social platforms and start publishing.
+          </p>
+        </div>
+        <button
+          onClick={() => navigate('/settings')}
+          className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white font-semibold rounded-xl hover:opacity-90 transition-opacity"
+        >
+          <UsersIcon size={16} />
+          Create or Join a Team
+        </button>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       {/* Header */}
       <div className="glass-enhanced rounded-2xl p-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
-            Social Accounts
+            {activeTeam.name} — Social Accounts
           </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">
             Connect your social platforms to enable publishing

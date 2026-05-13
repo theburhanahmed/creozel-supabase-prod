@@ -3,50 +3,50 @@ import { reportError } from '../utils/errorReporter'
 import type { SocialConnection, SocialPlatform } from '../types'
 
 /**
- * Fetch all social connections for the current user/team.
+ * Fetch all social connections for a team.
+ * Returns [] immediately if teamId is null (no team selected).
  */
 export async function getSocialConnections(
-  userId: string,
-  teamId?: string,
+  teamId: string | null,
 ): Promise<SocialConnection[]> {
+  if (teamId === null) return []
+
   try {
-    let query = supabase
+    const { data, error } = await supabase
       .from('social_connections')
       .select('id, user_id, team_id, platform, account_name, account_id, token_expires_at, is_active, created_at')
+      .eq('team_id', teamId)
       .order('created_at', { ascending: false })
 
-    if (teamId) {
-      query = query.eq('team_id', teamId)
-    } else {
-      query = query.eq('user_id', userId)
-    }
-
-    const { data, error } = await query
-
     if (error) {
-      reportError('socialService.getSocialConnections', error, { userId })
+      reportError('getSocialConnections [socialService.ts]', error)
       return []
     }
 
     return (data ?? []) as SocialConnection[]
   } catch (error: unknown) {
-    reportError('socialService.getSocialConnections', error, { userId })
+    reportError('getSocialConnections [socialService.ts]', error)
     return []
   }
 }
 
 /**
  * Disconnect a social account — marks as inactive and cancels any scheduled posts.
+ * Filters by both id and team_id to enforce tenant isolation.
  */
-export async function disconnectSocialAccount(connectionId: string): Promise<boolean> {
+export async function disconnectSocialAccount(
+  connectionId: string,
+  teamId: string,
+): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('social_connections')
       .update({ is_active: false })
       .eq('id', connectionId)
+      .eq('team_id', teamId)
 
     if (error) {
-      reportError('socialService.disconnectSocialAccount', error, { connectionId })
+      reportError('disconnectSocialAccount [socialService.ts]', error)
       return false
     }
 
@@ -59,17 +59,35 @@ export async function disconnectSocialAccount(connectionId: string): Promise<boo
 
     return true
   } catch (error: unknown) {
-    reportError('socialService.disconnectSocialAccount', error, { connectionId })
+    reportError('disconnectSocialAccount [socialService.ts]', error)
     return false
   }
 }
 
 /**
- * Initiate OAuth connection for a platform.
- * Redirects to the oauth-connect Edge Function which handles the OAuth flow.
+ * Build the OAuth initiation URL for a platform.
+ * Embeds platform, redirect_uri, user_id, and team_id in the state parameter.
+ * teamId must be non-empty; throws if it is not.
  */
-export function getOAuthUrl(platform: SocialPlatform): string {
+export function getOAuthUrl(
+  platform: SocialPlatform,
+  userId: string,
+  teamId: string,
+): string {
+  if (!teamId) {
+    throw new Error('teamId is required to initiate OAuth connection')
+  }
+
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string
-  const redirectUri = encodeURIComponent(`${window.location.origin}/social-accounts`)
-  return `${supabaseUrl}/functions/v1/oauth-connect?platform=${platform}&redirect_uri=${redirectUri}`
+  const redirectUri = `${window.location.origin}/social-accounts`
+  const state = btoa(
+    JSON.stringify({
+      platform,
+      redirect_uri: redirectUri,
+      user_id: userId,
+      team_id: teamId,
+    }),
+  )
+
+  return `${supabaseUrl}/functions/v1/oauth-connect?platform=${platform}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}`
 }

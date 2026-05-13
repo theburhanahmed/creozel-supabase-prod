@@ -28,7 +28,7 @@ function formatBytes(bytes: number): string {
 }
 
 export const MediaGallery: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
   const [items, setItems]         = useState<MediaItem[]>([])
   const [loading, setLoading]     = useState(true)
   const [uploading, setUploading] = useState(false)
@@ -36,15 +36,28 @@ export const MediaGallery: React.FC = () => {
   const [typeFilter, setTypeFilter] = useState<MediaType | 'all'>('all')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Task 7.3: Clear items and show loading skeleton when activeTeam changes
   useEffect(() => {
-    if (user) void getMediaItems(user.id).then((data) => { setItems(data); setLoading(false) })
-  }, [user])
+    setItems([])
+    setLoading(true)
+  }, [activeTeam])
+
+  // Task 7.1: Pass activeTeam?.id ?? null as teamId; depends on both user and activeTeam
+  useEffect(() => {
+    if (user) {
+      void getMediaItems(user.id, activeTeam?.id ?? null).then((data) => {
+        setItems(data)
+        setLoading(false)
+      })
+    }
+  }, [user, activeTeam])
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !user) return
     setUploading(true)
-    const item = await uploadMediaItem(user.id, file)
+    // Task 7.1: Pass activeTeam?.id ?? null as teamId
+    const item = await uploadMediaItem(user.id, file, activeTeam?.id ?? null)
     setUploading(false)
     if (item) { setItems((prev) => [item, ...prev]); toast.success('File uploaded') }
     else toast.error('Upload failed')
@@ -67,7 +80,9 @@ export const MediaGallery: React.FC = () => {
     <div className="space-y-6">
       <div className="glass-enhanced rounded-2xl p-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">Media Gallery</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white mb-1">
+            {activeTeam ? `${activeTeam.name} — Media Library` : 'Personal — Media Library'}
+          </h1>
           <p className="text-gray-500 dark:text-gray-400 text-sm">{items.length} assets</p>
         </div>
         <div>

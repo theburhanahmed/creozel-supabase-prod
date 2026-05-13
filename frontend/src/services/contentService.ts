@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
-import type { ContentJob, ContentType, PricingConfig } from '../types'
+import type { ContentFormatMetadataSchema, ContentJob, ContentType, PricingConfig } from '../types'
 
 export interface CreateJobParams {
   type: ContentType
@@ -9,6 +9,7 @@ export interface CreateJobParams {
   teamId?: string
   brandVoice?: string
   voiceId?: string
+  metadata?: ContentFormatMetadataSchema | undefined
 }
 
 /**
@@ -63,6 +64,8 @@ export async function createContentJob(
         tone:        params.tone ?? 'professional',
         brand_voice: params.brandVoice ?? null,
         voice_id:    params.voiceId ?? null,
+        // Spread all advanced option fields from the caller (task 14.1)
+        ...(params.metadata ?? {}),
       },
     })
     .select()
@@ -177,18 +180,26 @@ export async function getPricingConfig(): Promise<PricingConfig[]> {
 
 /**
  * Fetch recent content jobs for the current user.
+ * When teamId is provided, filters to jobs belonging to that team.
  */
 export async function getRecentJobs(
   userId: string,
   limit = 10,
+  teamId?: string,
 ): Promise<ContentJob[]> {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('content_jobs')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false })
       .limit(limit)
+
+    if (teamId) {
+      query = query.eq('team_id', teamId)
+    }
+
+    const { data, error } = await query
 
     if (error) {
       reportError('contentService.getRecentJobs', error, { userId })

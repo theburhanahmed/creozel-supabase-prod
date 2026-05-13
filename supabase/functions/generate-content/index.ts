@@ -72,6 +72,14 @@ serve(async (req: Request) => {
       // Text and video scripts use OpenAI
       if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
+      // Read advanced options from metadata with safe fallbacks (task 15.1)
+      const model = (job.metadata?.model as string) ?? 'gpt-4'
+      const tone = (job.metadata?.tone as string) ?? 'professional'
+      const outputFormat = (job.metadata?.output_format as string) ?? 'blog_post'
+      const wordCountMax = (job.metadata?.word_count_max as number) ?? 1000
+      const language = (job.metadata?.language as string) ?? 'en'
+      const brandVoice = (job.metadata?.brand_voice as string | null) ?? null
+
       // Fetch brand voice from brand_profiles table (non-fatal if missing)
       const { data: brandProfile } = await supabase
         .from('brand_profiles')
@@ -79,11 +87,14 @@ serve(async (req: Request) => {
         .eq('user_id', job.user_id)
         .maybeSingle()
 
-      const voiceGuidelines = brandProfile?.voice_guidelines ?? null
+      const voiceGuidelines = brandVoice ?? brandProfile?.voice_guidelines ?? null
 
       const systemPrompt = voiceGuidelines
-        ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${job.metadata?.tone ?? 'professional'}.`
-        : `You are a professional content creator. Tone: ${job.metadata?.tone ?? 'professional'}.`
+        ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.`
+        : `You are a professional content creator. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.`
+
+      // Approximate token count: wordCountMax * 1.5 (task 15.2)
+      const maxTokens = job.type === 'video' ? 2000 : Math.ceil(wordCountMax * 1.5)
 
       const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
@@ -92,12 +103,12 @@ serve(async (req: Request) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          model: 'gpt-4',
+          model,
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: job.prompt },
           ],
-          max_tokens: job.type === 'video' ? 2000 : 1000,
+          max_tokens: maxTokens,
         }),
       })
 
@@ -130,6 +141,18 @@ serve(async (req: Request) => {
       // Images use DALL-E 3
       if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
+      // Read advanced options from metadata with safe fallbacks (task 15.1)
+      const resolution = (job.metadata?.resolution as string) ?? '1024x1024'
+      const style = (job.metadata?.style as string) ?? 'photorealistic'
+      const numImages = (job.metadata?.num_images as number) ?? 1
+      // seed and negativePrompt are read but not passed to DALL-E (not supported by the API)
+      // They are preserved here for potential future use with Stable Diffusion
+      // const negativePrompt = (job.metadata?.negative_prompt as string) ?? ''
+      // const seed = (job.metadata?.seed as number | undefined)
+
+      // Append style to prompt if set (task 15.2)
+      const styledPrompt = style ? `${job.prompt} Style: ${style}.` : job.prompt
+
       const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
         method: 'POST',
         headers: {
@@ -138,9 +161,9 @@ serve(async (req: Request) => {
         },
         body: JSON.stringify({
           model: 'dall-e-3',
-          prompt: job.prompt,
-          n: 1,
-          size: '1024x1024',
+          prompt: styledPrompt,
+          n: numImages,
+          size: resolution,
           response_format: 'url',
         }),
       })
@@ -177,7 +200,15 @@ serve(async (req: Request) => {
       // Audio uses ElevenLabs TTS
       if (!elevenKey) throw new Error('ELEVENLABS_API_KEY not configured')
 
+      // Read advanced options from metadata with safe fallbacks (task 15.1)
       const voiceId = (job.metadata?.voice_id as string) ?? '21m00Tcm4TlvDq8ikWAM' // Default: Rachel
+      const speakingRate = (job.metadata?.speaking_rate as number) ?? 1.0
+      const stabilityClarity = (job.metadata?.stability_clarity as number) ?? 50
+      const outputFormat = (job.metadata?.output_format as string) ?? 'mp3'
+
+      // Determine file extension from output format
+      const audioExt = outputFormat === 'wav' ? 'wav' : 'mp3'
+      const audioContentType = outputFormat === 'wav' ? 'audio/wav' : 'audio/mpeg'
 
       const elevenRes = await fetch(
         `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
@@ -190,7 +221,12 @@ serve(async (req: Request) => {
           body: JSON.stringify({
             text: job.prompt,
             model_id: 'eleven_monolingual_v1',
-            voice_settings: { stability: 0.5, similarity_boost: 0.5 },
+            // Pass stability (normalised 0–1) and speaking_rate from metadata (task 15.2)
+            voice_settings: {
+              stability: stabilityClarity / 100,
+              similarity_boost: 0.75,
+              speaking_rate: speakingRate,
+            },
           }),
         },
       )
@@ -201,11 +237,11 @@ serve(async (req: Request) => {
       }
 
       const audioBlob = await elevenRes.blob()
-      const fileName = `${job.user_id}/${job_id}.mp3`
+      const fileName = `${job.user_id}/${job_id}.${audioExt}`
 
       const { error: uploadError } = await supabase.storage
         .from('generated-content')
-        .upload(fileName, audioBlob, { contentType: 'audio/mpeg', upsert: true })
+        .upload(fileName, audioBlob, { contentType: audioContentType, upsert: true })
 
       if (!uploadError) {
         const { data: urlData } = supabase.storage

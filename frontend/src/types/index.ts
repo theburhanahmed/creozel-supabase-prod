@@ -304,3 +304,260 @@ export interface PaginatedResponse<T> {
   data: T[]
   count: number
 }
+
+// ─── Advanced Content Generation Options ─────────────────────────────────────
+
+export interface TextAdvancedOptions {
+  model: 'gpt-4' | 'gpt-3.5'
+  tone: 'professional' | 'casual' | 'humorous' | 'persuasive' | 'informative'
+  outputFormat: 'blog_post' | 'caption' | 'ad_copy' | 'thread' | 'email'
+  wordCountMin: number   // 1–10000
+  wordCountMax: number   // 1–10000, must be >= wordCountMin
+  language: string
+  brandVoiceEnabled: boolean
+}
+
+export interface ImageAdvancedOptions {
+  provider: 'dall-e-3' | 'stable-diffusion'
+  resolution: '512x512' | '1024x1024' | '1792x1024' | '1024x1792'
+  style: 'photorealistic' | 'illustration' | 'digital_art' | 'oil_painting' | 'watercolor'
+  negativePrompt: string  // max 500 chars
+  numImages: number       // 1–4
+  seed: number            // 0–2147483647
+}
+
+export interface VideoAdvancedOptions {
+  model: 'gpt-4' | 'gpt-3.5'
+  sceneCount: number      // 1–10
+  durationPerScene: 15 | 30 | 60
+  aspectRatio: '16:9' | '9:16' | '1:1'
+  includeBRoll: boolean
+  brandVoiceEnabled: boolean
+}
+
+export interface AudioAdvancedOptions {
+  provider: 'elevenlabs' | 'whisper'
+  voiceId: string
+  speakingRate: number    // 0.5–2.0
+  pitchAdjustment: number // -10 to +10
+  outputFormat: 'mp3' | 'wav'
+  stabilityClarity: number // 0–100, ElevenLabs only
+}
+
+export const DEFAULT_TEXT_OPTIONS: TextAdvancedOptions = {
+  model: 'gpt-4',
+  tone: 'professional',
+  outputFormat: 'blog_post',
+  wordCountMin: 300,
+  wordCountMax: 800,
+  language: 'en',
+  brandVoiceEnabled: false,
+}
+
+export const DEFAULT_IMAGE_OPTIONS: ImageAdvancedOptions = {
+  provider: 'dall-e-3',
+  resolution: '1024x1024',
+  style: 'photorealistic',
+  negativePrompt: '',
+  numImages: 1,
+  seed: 0,
+}
+
+export const DEFAULT_VIDEO_OPTIONS: VideoAdvancedOptions = {
+  model: 'gpt-4',
+  sceneCount: 3,
+  durationPerScene: 30,
+  aspectRatio: '16:9',
+  includeBRoll: false,
+  brandVoiceEnabled: false,
+}
+
+export const DEFAULT_AUDIO_OPTIONS: AudioAdvancedOptions = {
+  provider: 'elevenlabs',
+  voiceId: '21m00Tcm4TlvDq8ikWAM',
+  speakingRate: 1.0,
+  pitchAdjustment: 0,
+  outputFormat: 'mp3',
+  stabilityClarity: 50,
+}
+
+// ─── Content Generation Studio Types ─────────────────────────────────────────
+
+export type ContentCategory = 'text' | 'image' | 'video' | 'audio' | 'story'
+
+// All Phase 1 snake_case format keys (72 keys)
+export type ContentFormat =
+  // text — short-form
+  | 'tweet' | 'thread' | 'caption' | 'hook' | 'cta' | 'poll_text'
+  | 'quote_post' | 'status_update' | 'community_post' | 'meme_text'
+  | 'story_text_overlay' | 'product_announcement'
+  // text — long-form
+  | 'blog_post' | 'article' | 'newsletter' | 'seo_page' | 'landing_page_copy'
+  | 'product_description' | 'whitepaper' | 'case_study' | 'tutorial'
+  | 'guide' | 'press_release'
+  // text — conversational
+  | 'qa_post' | 'ama_content' | 'community_response'
+  // image — static
+  | 'single_image_post' | 'poster' | 'ai_art' | 'infographic'
+  | 'motivational_graphic' | 'product_image' | 'branded_creative'
+  | 'event_poster' | 'announcement_banner'
+  // image — multi
+  | 'carousel' | 'swipe_post' | 'before_after_set' | 'educational_slides' | 'lookbook'
+  // image — advanced
+  | 'ai_generated_image' | 'meme' | 'gif'
+  // video — short-form
+  | 'reel' | 'short' | 'tiktok_video' | 'vertical_video' | 'promo_video'
+  | 'talking_head_video' | 'loop_video'
+  // video — long-form
+  | 'youtube_video' | 'tutorial_video' | 'product_demo'
+  // video — AI
+  | 'faceless_video' | 'voiceover_video' | 'subtitle_video'
+  | 'ai_explainer_video' | 'repurposed_clip'
+  // audio
+  | 'podcast_episode' | 'voiceover' | 'tts_narration' | 'audio_blog'
+  | 'voice_note' | 'audio_ad' | 'multilingual_dub'
+  // story
+  | 'story_single' | 'story_sequence' | 'poll_story' | 'quiz_story'
+  | 'countdown_story' | 'link_story' | 'product_story'
+
+export type StudioPlatform =
+  | 'Instagram' | 'LinkedIn' | 'Twitter / X' | 'Facebook'
+  | 'YouTube' | 'TikTok' | 'Blog' | 'Newsletter' | 'Podcast' | 'General'
+
+export type StudioTone =
+  | 'Professional' | 'Casual' | 'Humorous'
+  | 'Inspirational' | 'Persuasive' | 'Informative'
+
+export type StudioMode = 'create' | 'repurpose'
+
+// ─── Platform Constraints ─────────────────────────────────────────────────────
+
+export interface PlatformConstraints {
+  characterLimit: number | null
+  aspectRatio: string | null
+  durationLimitSeconds: number | null
+  fileSizeLimitMb: number | null
+  acceptedFileFormats: string[]
+}
+
+// ─── Content Format Registry ──────────────────────────────────────────────────
+
+export interface ContentFormatRegistryEntry {
+  label: string
+  description: string
+  category: ContentCategory
+  compatiblePlatforms: StudioPlatform[]
+  constraints: Partial<Record<StudioPlatform, PlatformConstraints>>
+}
+
+// Keyed by ContentFormat — defined in src/constants/contentFormatRegistry.ts
+export type ContentFormatRegistry = Record<ContentFormat, ContentFormatRegistryEntry>
+
+// ─── Length Config ────────────────────────────────────────────────────────────
+
+export type LengthPreset = 'short' | 'medium' | 'long' | 'custom'
+
+export interface LengthConfig {
+  preset: LengthPreset | null
+  minWords: number | null
+  maxWords: number | null
+  durationSeconds: number | null
+  quantity: number | null
+  speakingRate: number | null
+}
+
+// ─── Studio Draft Config (localStorage shape) ─────────────────────────────────
+
+export interface StudioDraftConfig {
+  prompt: string
+  contentCategory: ContentCategory
+  contentFormat: ContentFormat
+  platform: StudioPlatform
+  tone: StudioTone
+  length: LengthConfig
+}
+
+// ─── Studio Validation Errors ─────────────────────────────────────────────────
+
+export interface StudioValidationErrors {
+  prompt?: string
+  contentFormat?: string
+  platform?: string
+  length?: string
+  repurposingSource?: string
+  repurposingTarget?: string
+}
+
+// ─── Content Format Metadata Schema (content_jobs.metadata shape) ─────────────
+
+export interface ContentFormatMetadataSchema {
+  contentCategory: ContentCategory
+  contentFormat: ContentFormat
+  platform: StudioPlatform
+  tone: StudioTone
+  length: LengthConfig
+  advancedOptions: {
+    model: string | null
+    resolution: string | null
+    style: string | null
+    negativePrompt: string | null
+    seed: number | null
+    voice: string | null
+    pitch: number | null
+    stability: number | null
+    outputFormat: string | null
+    aspectRatio: string | null
+    includeBRoll: boolean | null
+    brandVoice: boolean | null
+    language: string | null
+  }
+  platformConstraints: PlatformConstraints
+  sourceJobId: string | null
+  sourceMediaId: string | null
+  repurposingInstructions: string | null
+  schemaVersion: '1'
+}
+
+// ─── Studio Template ──────────────────────────────────────────────────────────
+
+export interface StudioTemplate {
+  id: string
+  name: string
+  description: string
+  content_category: ContentCategory
+  content_format: ContentFormat
+  platform: StudioPlatform
+  tone: StudioTone
+  prompt_template: string
+  advanced_options: ContentFormatMetadataSchema['advancedOptions']
+  is_system: boolean
+  team_id: string | null
+  created_at: string
+}
+
+// ─── Pipeline ─────────────────────────────────────────────────────────────────
+
+export interface Pipeline {
+  id: string
+  team_id: string
+  name: string
+  description: string
+  schedule: string | null          // cron expression or null
+  config: Omit<ContentFormatMetadataSchema,
+    'sourceJobId' | 'sourceMediaId' | 'repurposingInstructions' | 'schemaVersion'>
+  created_at: string
+  updated_at: string
+}
+
+// ─── Repurposing ──────────────────────────────────────────────────────────────
+
+export type RepurposingSourceType = 'job' | 'media'
+
+export interface RepurposingSource {
+  type: RepurposingSourceType
+  id: string                       // job.id or media_item.id
+  label: string                    // display name
+  format: ContentFormat | null     // derived from job.metadata.contentFormat or media type
+  previewUrl: string | null        // result_url or public_url
+  promptExcerpt: string | null     // first 80 chars of job.prompt, null for media items
+}

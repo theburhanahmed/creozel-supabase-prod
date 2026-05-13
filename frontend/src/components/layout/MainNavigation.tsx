@@ -14,6 +14,7 @@ import { FocusTrap } from '../ui/AccessibilityUtils'
 import { cn } from '../../lib/utils'
 import { useAppContext } from '../../context/AppContext'
 import { ProfileMenu, NotificationsMenu, MailboxMenu, CreditsMenu } from '../ui/DropdownMenus'
+import { TenantSwitcher } from './TenantSwitcher'
 
 interface NavItem { icon: React.ReactNode; title: string; href: string; children?: NavItem[]; description?: string }
 
@@ -26,6 +27,7 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
     isDarkMode, toggleDarkMode,
     toggleProfileMenu, toggleNotifications, toggleMailbox, toggleCreditsMenu,
     showProfileMenu, showNotifications, showMailbox, showCreditsMenu, user,
+    teams, activeTeam, setActiveTeam,
   } = useAppContext()
 
   useEffect(() => { setIsSidebarOpen(false) }, [location.pathname])
@@ -61,7 +63,6 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
         { icon: <LayoutDashboardIcon size={16} />, title: 'Dashboard', href: '/autopilot', description: 'Automation overview' },
         { icon: <PenToolIcon size={16} />, title: 'Create Pipeline', href: '/autopilot/create', description: 'New automation' },
         { icon: <CalendarIcon size={16} />, title: 'Scheduler', href: '/autopilot/scheduler', description: 'Schedule posts' },
-        { icon: <FolderIcon size={16} />, title: 'Media Library', href: '/autopilot/media', description: 'Manage assets' },
       ],
     },
     {
@@ -77,10 +78,10 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
       icon: <SendIcon size={18} />, title: 'Publishing', href: '/calendar',
       children: [
         { icon: <CalendarIcon size={16} />, title: 'Calendar', href: '/calendar', description: 'Content schedule' },
-        { icon: <GlobeIcon size={16} />, title: 'Social Accounts', href: '/social-accounts', description: 'Connected platforms' },
-        { icon: <FolderIcon size={16} />, title: 'Media Gallery', href: '/media', description: 'Published media' },
       ],
     },
+    { icon: <GlobeIcon size={18} />, title: 'Social Accounts', href: '/social-accounts' },
+    { icon: <FolderIcon size={18} />, title: 'Media Library', href: '/media' },
     {
       icon: <MessageSquareIcon size={18} />, title: 'Communication', href: '/messages',
       children: [
@@ -317,17 +318,7 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
 
                   {/* User card */}
                   <div className="pt-4 border-t border-white/10 dark:border-gray-700/30">
-                    <div className="flex items-center p-3 glass rounded-xl border border-white/5 dark:border-gray-700/20 shadow-ios-sm backdrop-blur-ios">
-                      <img
-                        src={user?.avatar_url || `https://ui-avatars.com/api/?name=${encodeURIComponent(user?.display_name ?? 'U')}&background=3FE0A5&color=fff`}
-                        alt={user?.display_name ?? 'User'}
-                        className="w-12 h-12 rounded-xl object-cover border-2 border-white/20 shadow-ios-sm"
-                      />
-                      <div className="ml-3 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white truncate">{user?.display_name ?? 'User'}</p>
-                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{user?.email}</p>
-                      </div>
-                    </div>
+                    <TenantSwitcher teams={teams} activeTeam={activeTeam} onSwitch={setActiveTeam} />
                   </div>
                 </div>
               </motion.nav>

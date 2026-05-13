@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react'
+import React, { useEffect, useState, useCallback, useRef } from 'react'
 import { toast } from 'sonner'
 import {
   FileTextIcon,
@@ -14,6 +14,7 @@ import {
   AlertCircleIcon,
   Loader2Icon,
   ChevronDownIcon,
+  RefreshCwIcon,
 } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 import {
@@ -23,7 +24,19 @@ import {
   getPricingConfig,
   getRecentJobs,
 } from '../../services/contentService'
+import { supabase } from '../../lib/supabase'
+import { reportError } from '../../utils/errorReporter'
 import type { ContentJob, ContentType, PricingConfig } from '../../types'
+import {
+  TextAdvancedOptions,
+  ImageAdvancedOptions,
+  VideoAdvancedOptions,
+  AudioAdvancedOptions,
+  DEFAULT_TEXT_OPTIONS,
+  DEFAULT_IMAGE_OPTIONS,
+  DEFAULT_VIDEO_OPTIONS,
+  DEFAULT_AUDIO_OPTIONS,
+} from '../../types'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const CONTENT_TYPES: Array<{
@@ -71,6 +84,37 @@ const TONES = [
   'Formal',
   'Conversational',
 ]
+
+interface VoiceOption {
+  voice_id: string
+  name: string
+}
+
+// ─── localStorage helpers ─────────────────────────────────────────────────────
+
+function loadFromStorage<T>(key: string, defaults: T): T {
+  try {
+    const raw = localStorage.getItem(key)
+    if (!raw) return defaults
+    return JSON.parse(raw) as T
+  } catch {
+    return defaults
+  }
+}
+
+function saveToStorage<T>(key: string, value: T): void {
+  try {
+    localStorage.setItem(key, JSON.stringify(value))
+  } catch {
+    // SecurityError or quota exceeded — silently ignore
+  }
+}
+
+// ─── Shared field styles ──────────────────────────────────────────────────────
+const fieldClass =
+  'w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-[#3FE0A5]/20 focus:border-[#3FE0A5] transition-all'
+
+const labelClass = 'block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1'
 
 // ─── Job Status Badge ─────────────────────────────────────────────────────────
 const StatusBadge: React.FC<{ status: ContentJob['status'] }> = ({ status }) => {
@@ -144,7 +188,6 @@ const ResultViewer: React.FC<{ job: ContentJob }> = ({ job }) => {
     )
   }
 
-  // Text / video script
   return (
     <div className="space-y-3">
       <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 max-h-64 overflow-y-auto">
@@ -188,70 +231,233 @@ const ResultViewer: React.FC<{ job: ContentJob }> = ({ job }) => {
 
 // ─── ContentHub ───────────────────────────────────────────────────────────────
 export const ContentHub: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
 
   const [selectedType, setSelectedType] = useState<ContentType>('text')
   const [prompt, setPrompt] = useState('')
   const [tone, setTone] = useState('Professional')
   const [useBrandVoice, setUseBrandVoice] = useState(false)
   const [pricing, setPricing] = useState<PricingConfig[]>([])
+  const [pricingUnavailable, setPricingUnavailable] = useState(false)
   const [activeJob, setActiveJob] = useState<ContentJob | null>(null)
   const [recentJobs, setRecentJobs] = useState<ContentJob[]>([])
   const [isGenerating, setIsGenerating] = useState(false)
   const [showToneDropdown, setShowToneDropdown] = useState(false)
 
-  // Load pricing and recent jobs on mount
+  // ─── Advanced options state ──────────────────────────────────────────────────
+  const [textOptions, setTextOptions] = useState<TextAdvancedOptions>(DEFAULT_TEXT_OPTIONS)
+  const [imageOptions, setImageOptions] = useState<ImageAdvancedOptions>(DEFAULT_IMAGE_OPTIONS)
+  const [videoOptions, setVideoOptions] = useState<VideoAdvancedOptions>(DEFAULT_VIDEO_OPTIONS)
+  const [audioOptions, setAudioOptions] = useState<AudioAdvancedOptions>(DEFAULT_AUDIO_OPTIONS)
+
+  // Collapsible panel open/closed per content type
+  const [advancedOpen, setAdvancedOpen] = useState<Record<ContentType, boolean>>({
+    text: false,
+    image: false,
+    video: false,
+    audio: false,
+  })
+
+  // Audio voice list
+  const [voices, setVoices] = useState<VoiceOption[]>([])
+  const [voicesLoading, setVoicesLoading] = useState(false)
+  const [voicesFailed, setVoicesFailed] = useState(false)
+
+  // Track whether we've done the initial localStorage restore
+  const restoredRef = useRef(false)
+
+  // ─── Task 12.5 — Brand voice on mount ────────────────────────────────────────
   useEffect(() => {
-    void getPricingConfig().then(setPricing)
+    if (!activeTeam) return
+    const fetchBrandProfile = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('brand_profiles')
+          .select('voice_guidelines')
+          .eq('team_id', activeTeam.id)
+          .maybeSingle()
+        if (error) throw error
+        const hasGuidelines = data?.voice_guidelines != null
+        setUseBrandVoice(hasGuidelines)
+        setTextOptions((prev) => ({ ...prev, brandVoiceEnabled: hasGuidelines }))
+        setVideoOptions((prev) => ({ ...prev, brandVoiceEnabled: hasGuidelines }))
+      } catch (error: unknown) {
+        reportError('ContentHub.fetchBrandProfile [ContentHub.tsx]', error)
+        setUseBrandVoice(false)
+      }
+    }
+    void fetchBrandProfile()
+  }, [activeTeam])
+
+  // ─── Task 12.6 — Restore advanced options from localStorage on mount ─────────
+  useEffect(() => {
+    if (!activeTeam || restoredRef.current) return
+    restoredRef.current = true
+    const teamId = activeTeam.id
+    setTextOptions(loadFromStorage<TextAdvancedOptions>(`${teamId}:text:advancedOptions`, DEFAULT_TEXT_OPTIONS))
+    setImageOptions(loadFromStorage<ImageAdvancedOptions>(`${teamId}:image:advancedOptions`, DEFAULT_IMAGE_OPTIONS))
+    setVideoOptions(loadFromStorage<VideoAdvancedOptions>(`${teamId}:video:advancedOptions`, DEFAULT_VIDEO_OPTIONS))
+    setAudioOptions(loadFromStorage<AudioAdvancedOptions>(`${teamId}:audio:advancedOptions`, DEFAULT_AUDIO_OPTIONS))
+  }, [activeTeam])
+
+  // ─── Task 12.6 — Persist advanced options to localStorage on every change ────
+  useEffect(() => {
+    if (!activeTeam) return
+    saveToStorage(`${activeTeam.id}:text:advancedOptions`, textOptions)
+  }, [textOptions, activeTeam])
+
+  useEffect(() => {
+    if (!activeTeam) return
+    saveToStorage(`${activeTeam.id}:image:advancedOptions`, imageOptions)
+  }, [imageOptions, activeTeam])
+
+  useEffect(() => {
+    if (!activeTeam) return
+    saveToStorage(`${activeTeam.id}:video:advancedOptions`, videoOptions)
+  }, [videoOptions, activeTeam])
+
+  useEffect(() => {
+    if (!activeTeam) return
+    saveToStorage(`${activeTeam.id}:audio:advancedOptions`, audioOptions)
+  }, [audioOptions, activeTeam])
+
+  // ─── Task 13.1 — Load pricing on mount and when advanced options change ───────
+  useEffect(() => {
+    const loadPricing = async () => {
+      const result = await getPricingConfig()
+      if (result.length === 0) {
+        setPricingUnavailable(true)
+        setPricing([])
+      } else {
+        setPricingUnavailable(false)
+        setPricing(result)
+      }
+    }
+    void loadPricing()
+  }, [textOptions, imageOptions, videoOptions, audioOptions])
+
+  // Load recent jobs on mount
+  useEffect(() => {
     if (user) {
       void getRecentJobs(user.id).then(setRecentJobs)
     }
   }, [user])
+
+  // ─── Audio voice fetch ────────────────────────────────────────────────────────
+  const fetchVoices = useCallback(async () => {
+    setVoicesLoading(true)
+    setVoicesFailed(false)
+    try {
+      const { data, error } = await supabase.functions.invoke<{ voices: VoiceOption[] }>('list-voices', {
+        body: { provider: audioOptions.provider },
+      })
+      if (error || !data?.voices) throw new Error('Failed to fetch voices')
+      setVoices(data.voices)
+    } catch (error: unknown) {
+      reportError('ContentHub.fetchVoices [ContentHub.tsx]', error)
+      setVoicesFailed(true)
+      setVoices([])
+    } finally {
+      setVoicesLoading(false)
+    }
+  }, [audioOptions.provider])
+
+  useEffect(() => {
+    if (selectedType === 'audio') {
+      void fetchVoices()
+    }
+  }, [selectedType, fetchVoices])
 
   // Subscribe to active job updates via Realtime
   useEffect(() => {
     if (!activeJob || activeJob.status === 'completed' || activeJob.status === 'failed') {
       return
     }
-
     const unsubscribe = subscribeToJob(activeJob.id, (updated) => {
       setActiveJob(updated)
       if (updated.status === 'completed') {
         setIsGenerating(false)
         toast.success('Content generated successfully!')
-        // Refresh recent jobs
         if (user) void getRecentJobs(user.id).then(setRecentJobs)
       } else if (updated.status === 'failed') {
         setIsGenerating(false)
         toast.error(updated.error_message ?? 'Generation failed. Please try again.')
       }
     })
-
     return unsubscribe
   }, [activeJob?.id, activeJob?.status, user])
 
+  // ─── Task 13.2 — Credit cost for selected type ───────────────────────────────
   const creditCost = pricing.find((p) => p.content_type === selectedType)?.credits_cost ?? 0
+
+  // ─── Task 14.1 — Build metadata from advanced options ────────────────────────
+  const buildMetadata = useCallback((): Record<string, unknown> => {
+    switch (selectedType) {
+      case 'text':
+        return {
+          model:          textOptions.model,
+          tone:           textOptions.tone,
+          output_format:  textOptions.outputFormat,
+          word_count_min: textOptions.wordCountMin,
+          word_count_max: textOptions.wordCountMax,
+          language:       textOptions.language,
+          brand_voice:    textOptions.brandVoiceEnabled
+            ? 'Use the brand voice guidelines from the team profile.'
+            : null,
+        }
+      case 'image':
+        return {
+          provider:        imageOptions.provider,
+          resolution:      imageOptions.resolution,
+          style:           imageOptions.style,
+          negative_prompt: imageOptions.negativePrompt,
+          num_images:      imageOptions.numImages,
+          seed:            imageOptions.seed,
+        }
+      case 'video':
+        return {
+          model:              videoOptions.model,
+          scene_count:        videoOptions.sceneCount,
+          duration_per_scene: videoOptions.durationPerScene,
+          aspect_ratio:       videoOptions.aspectRatio,
+          include_b_roll:     videoOptions.includeBRoll,
+          brand_voice:        videoOptions.brandVoiceEnabled
+            ? 'Use the brand voice guidelines from the team profile.'
+            : null,
+        }
+      case 'audio':
+        return {
+          provider:          audioOptions.provider,
+          voice_id:          audioOptions.voiceId,
+          speaking_rate:     audioOptions.speakingRate,
+          pitch_adjustment:  audioOptions.pitchAdjustment,
+          output_format:     audioOptions.outputFormat,
+          stability_clarity: audioOptions.stabilityClarity,
+        }
+    }
+  }, [selectedType, textOptions, imageOptions, videoOptions, audioOptions])
 
   const handleGenerate = useCallback(async () => {
     if (!user || !prompt.trim()) return
     if (isGenerating) return
-
     setIsGenerating(true)
     setActiveJob(null)
-
     try {
       const job = await createContentJob(user.id, {
         type:       selectedType,
         prompt:     prompt.trim(),
         tone:       tone.toLowerCase(),
-        brandVoice: useBrandVoice ? 'Use the brand voice guidelines from the user profile.' : undefined,
+        teamId:     activeTeam?.id,
+        brandVoice: useBrandVoice
+          ? 'Use the brand voice guidelines from the team profile.'
+          : undefined,
       })
       setActiveJob(job)
     } catch (err: unknown) {
       setIsGenerating(false)
       toast.error(err instanceof Error ? err.message : 'Failed to start generation')
     }
-  }, [user, prompt, selectedType, tone, useBrandVoice, isGenerating])
+  }, [user, prompt, selectedType, tone, useBrandVoice, isGenerating, activeTeam, buildMetadata])
 
   const handleCancel = useCallback(async () => {
     if (!activeJob || !user) return
@@ -260,6 +466,11 @@ export const ContentHub: React.FC = () => {
     setActiveJob(null)
     toast.info('Generation cancelled')
   }, [activeJob, user])
+
+  // ─── Advanced options toggle ──────────────────────────────────────────────────
+  const toggleAdvanced = (type: ContentType) => {
+    setAdvancedOpen((prev) => ({ ...prev, [type]: !prev[type] }))
+  }
 
   return (
     <div className="space-y-6">
@@ -301,16 +512,14 @@ export const ContentHub: React.FC = () => {
                     {ct.label}
                   </span>
                   <span className="text-xs text-[#3FE0A5] font-medium">
-                    {creditCost > 0 && selectedType === ct.type
-                      ? `${pricing.find((p) => p.content_type === ct.type)?.credits_cost ?? '?'} credits`
-                      : `${pricing.find((p) => p.content_type === ct.type)?.credits_cost ?? '?'} credits`}
+                    {pricing.find((p) => p.content_type === ct.type)?.credits_cost ?? '?'} credits
                   </span>
                 </button>
               ))}
             </div>
           </div>
 
-          {/* Prompt input */}
+          {/* Prompt input + tone + advanced options */}
           <div className="glass-enhanced rounded-2xl p-6 space-y-4">
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">
@@ -378,13 +587,590 @@ export const ContentHub: React.FC = () => {
               </label>
             </div>
 
-            {/* Credit cost + Generate button */}
+            {/* ── Task 12.1 — Text Advanced Options ── */}
+            {selectedType === 'text' && (
+              <div className="border border-gray-200/50 dark:border-gray-700/30 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleAdvanced('text')}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  aria-expanded={advancedOpen.text}
+                >
+                  Advanced options
+                  <ChevronDownIcon
+                    size={16}
+                    className={`transition-transform ${advancedOpen.text ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {advancedOpen.text && (
+                  <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-gray-200/50 dark:border-gray-700/30 pt-4">
+                    {/* AI Model */}
+                    <div>
+                      <label className={labelClass}>AI Model</label>
+                      <select
+                        value={textOptions.model}
+                        onChange={(e) =>
+                          setTextOptions((prev) => ({
+                            ...prev,
+                            model: e.target.value as TextAdvancedOptions['model'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-3.5">GPT-3.5</option>
+                      </select>
+                    </div>
+                    {/* Tone */}
+                    <div>
+                      <label className={labelClass}>Tone</label>
+                      <select
+                        value={textOptions.tone}
+                        onChange={(e) =>
+                          setTextOptions((prev) => ({
+                            ...prev,
+                            tone: e.target.value as TextAdvancedOptions['tone'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="professional">Professional</option>
+                        <option value="casual">Casual</option>
+                        <option value="humorous">Humorous</option>
+                        <option value="persuasive">Persuasive</option>
+                        <option value="informative">Informative</option>
+                      </select>
+                    </div>
+                    {/* Output Format */}
+                    <div>
+                      <label className={labelClass}>Output Format</label>
+                      <select
+                        value={textOptions.outputFormat}
+                        onChange={(e) =>
+                          setTextOptions((prev) => ({
+                            ...prev,
+                            outputFormat: e.target.value as TextAdvancedOptions['outputFormat'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="blog_post">Blog Post</option>
+                        <option value="caption">Caption</option>
+                        <option value="ad_copy">Ad Copy</option>
+                        <option value="thread">Thread</option>
+                        <option value="email">Email</option>
+                      </select>
+                    </div>
+                    {/* Language */}
+                    <div>
+                      <label className={labelClass}>Language</label>
+                      <input
+                        type="text"
+                        value={textOptions.language}
+                        onChange={(e) =>
+                          setTextOptions((prev) => ({ ...prev, language: e.target.value }))
+                        }
+                        placeholder="en"
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Word Count Min */}
+                    <div>
+                      <label className={labelClass}>Min Words (1–10000)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10000}
+                        value={textOptions.wordCountMin}
+                        onChange={(e) => {
+                          const val = Math.max(1, Math.min(10000, Number(e.target.value)))
+                          setTextOptions((prev) => ({ ...prev, wordCountMin: val }))
+                        }}
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Word Count Max */}
+                    <div>
+                      <label className={labelClass}>Max Words (≥ min)</label>
+                      <input
+                        type="number"
+                        min={textOptions.wordCountMin}
+                        max={10000}
+                        value={textOptions.wordCountMax}
+                        onChange={(e) => {
+                          const val = Math.max(textOptions.wordCountMin, Math.min(10000, Number(e.target.value)))
+                          setTextOptions((prev) => ({ ...prev, wordCountMax: val }))
+                        }}
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Brand Voice Toggle */}
+                    <div className="col-span-2">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={textOptions.brandVoiceEnabled}
+                          onChange={(e) =>
+                            setTextOptions((prev) => ({
+                              ...prev,
+                              brandVoiceEnabled: e.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 text-[#3FE0A5] focus:ring-[#3FE0A5] border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Use brand voice guidelines
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Task 12.2 — Image Advanced Options ── */}
+            {selectedType === 'image' && (
+              <div className="border border-gray-200/50 dark:border-gray-700/30 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleAdvanced('image')}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  aria-expanded={advancedOpen.image}
+                >
+                  Advanced options
+                  <ChevronDownIcon
+                    size={16}
+                    className={`transition-transform ${advancedOpen.image ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {advancedOpen.image && (
+                  <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-gray-200/50 dark:border-gray-700/30 pt-4">
+                    {/* Provider */}
+                    <div>
+                      <label className={labelClass}>Provider</label>
+                      <select
+                        value={imageOptions.provider}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            provider: e.target.value as ImageAdvancedOptions['provider'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="dall-e-3">DALL-E 3</option>
+                        <option value="stable-diffusion">Stable Diffusion</option>
+                      </select>
+                    </div>
+                    {/* Resolution */}
+                    <div>
+                      <label className={labelClass}>Resolution</label>
+                      <select
+                        value={imageOptions.resolution}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            resolution: e.target.value as ImageAdvancedOptions['resolution'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="512x512">512×512</option>
+                        <option value="1024x1024">1024×1024</option>
+                        <option value="1792x1024">1792×1024</option>
+                        <option value="1024x1792">1024×1792</option>
+                      </select>
+                    </div>
+                    {/* Style */}
+                    <div>
+                      <label className={labelClass}>Style</label>
+                      <select
+                        value={imageOptions.style}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            style: e.target.value as ImageAdvancedOptions['style'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="photorealistic">Photorealistic</option>
+                        <option value="illustration">Illustration</option>
+                        <option value="digital_art">Digital Art</option>
+                        <option value="oil_painting">Oil Painting</option>
+                        <option value="watercolor">Watercolor</option>
+                      </select>
+                    </div>
+                    {/* Num Images */}
+                    <div>
+                      <label className={labelClass}>Number of Images (1–4)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={4}
+                        value={imageOptions.numImages}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            numImages: Math.max(1, Math.min(4, Number(e.target.value))),
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Seed */}
+                    <div>
+                      <label className={labelClass}>Seed (0–2147483647)</label>
+                      <input
+                        type="number"
+                        min={0}
+                        max={2147483647}
+                        value={imageOptions.seed}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            seed: Math.max(0, Math.min(2147483647, Number(e.target.value))),
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Negative Prompt */}
+                    <div className="col-span-2">
+                      <label className={labelClass}>Negative Prompt (max 500 chars)</label>
+                      <textarea
+                        value={imageOptions.negativePrompt}
+                        maxLength={500}
+                        rows={2}
+                        onChange={(e) =>
+                          setImageOptions((prev) => ({
+                            ...prev,
+                            negativePrompt: e.target.value.slice(0, 500),
+                          }))
+                        }
+                        placeholder="Things to avoid in the image..."
+                        className={fieldClass + ' resize-none'}
+                      />
+                      <p className="text-xs text-gray-400 text-right mt-0.5">
+                        {imageOptions.negativePrompt.length}/500
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Task 12.3 — Video Advanced Options ── */}
+            {selectedType === 'video' && (
+              <div className="border border-gray-200/50 dark:border-gray-700/30 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleAdvanced('video')}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  aria-expanded={advancedOpen.video}
+                >
+                  Advanced options
+                  <ChevronDownIcon
+                    size={16}
+                    className={`transition-transform ${advancedOpen.video ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {advancedOpen.video && (
+                  <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-gray-200/50 dark:border-gray-700/30 pt-4">
+                    {/* AI Model */}
+                    <div>
+                      <label className={labelClass}>AI Model</label>
+                      <select
+                        value={videoOptions.model}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            model: e.target.value as VideoAdvancedOptions['model'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="gpt-4">GPT-4</option>
+                        <option value="gpt-3.5">GPT-3.5</option>
+                      </select>
+                    </div>
+                    {/* Scene Count */}
+                    <div>
+                      <label className={labelClass}>Scene Count (1–10)</label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={videoOptions.sceneCount}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            sceneCount: Math.max(1, Math.min(10, Number(e.target.value))),
+                          }))
+                        }
+                        className={fieldClass}
+                      />
+                    </div>
+                    {/* Duration Per Scene */}
+                    <div>
+                      <label className={labelClass}>Duration Per Scene</label>
+                      <select
+                        value={videoOptions.durationPerScene}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            durationPerScene: Number(e.target.value) as VideoAdvancedOptions['durationPerScene'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value={15}>15 seconds</option>
+                        <option value={30}>30 seconds</option>
+                        <option value={60}>60 seconds</option>
+                      </select>
+                    </div>
+                    {/* Aspect Ratio */}
+                    <div>
+                      <label className={labelClass}>Aspect Ratio</label>
+                      <select
+                        value={videoOptions.aspectRatio}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            aspectRatio: e.target.value as VideoAdvancedOptions['aspectRatio'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="16:9">16:9 (Landscape)</option>
+                        <option value="9:16">9:16 (Portrait)</option>
+                        <option value="1:1">1:1 (Square)</option>
+                      </select>
+                    </div>
+                    {/* B-Roll Toggle */}
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer mt-4">
+                        <input
+                          type="checkbox"
+                          checked={videoOptions.includeBRoll}
+                          onChange={(e) =>
+                            setVideoOptions((prev) => ({
+                              ...prev,
+                              includeBRoll: e.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 text-[#3FE0A5] focus:ring-[#3FE0A5] border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Include B-roll suggestions
+                        </span>
+                      </label>
+                    </div>
+                    {/* Brand Voice Toggle */}
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer mt-4">
+                        <input
+                          type="checkbox"
+                          checked={videoOptions.brandVoiceEnabled}
+                          onChange={(e) =>
+                            setVideoOptions((prev) => ({
+                              ...prev,
+                              brandVoiceEnabled: e.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4 text-[#3FE0A5] focus:ring-[#3FE0A5] border-gray-300 rounded"
+                        />
+                        <span className="text-sm text-gray-600 dark:text-gray-400">
+                          Use brand voice guidelines
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Task 12.4 — Audio Advanced Options ── */}
+            {selectedType === 'audio' && (
+              <div className="border border-gray-200/50 dark:border-gray-700/30 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => toggleAdvanced('audio')}
+                  className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
+                  aria-expanded={advancedOpen.audio}
+                >
+                  Advanced options
+                  <ChevronDownIcon
+                    size={16}
+                    className={`transition-transform ${advancedOpen.audio ? 'rotate-180' : ''}`}
+                  />
+                </button>
+                {advancedOpen.audio && (
+                  <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-gray-200/50 dark:border-gray-700/30 pt-4">
+                    {/* Provider */}
+                    <div>
+                      <label className={labelClass}>TTS Provider</label>
+                      <select
+                        value={audioOptions.provider}
+                        onChange={(e) =>
+                          setAudioOptions((prev) => ({
+                            ...prev,
+                            provider: e.target.value as AudioAdvancedOptions['provider'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="elevenlabs">ElevenLabs</option>
+                        <option value="whisper">Whisper</option>
+                      </select>
+                    </div>
+                    {/* Voice Selector */}
+                    <div>
+                      <label className={labelClass}>Voice</label>
+                      {voicesLoading ? (
+                        <div className="flex items-center gap-2 text-xs text-gray-400 py-2">
+                          <Loader2Icon size={12} className="animate-spin" />
+                          Loading voices…
+                        </div>
+                      ) : (
+                        <>
+                          <select
+                            value={audioOptions.voiceId}
+                            onChange={(e) =>
+                              setAudioOptions((prev) => ({ ...prev, voiceId: e.target.value }))
+                            }
+                            disabled={voicesFailed || voices.length === 0}
+                            className={`${fieldClass} ${voicesFailed ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          >
+                            {voicesFailed ? (
+                              <option value="">Failed to load voices</option>
+                            ) : voices.length === 0 ? (
+                              <option value="">No voices available</option>
+                            ) : (
+                              voices.map((v) => (
+                                <option key={v.voice_id} value={v.voice_id}>
+                                  {v.name}
+                                </option>
+                              ))
+                            )}
+                          </select>
+                          {voicesFailed && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-xs text-red-500">Failed to load voices</span>
+                              <button
+                                onClick={() => void fetchVoices()}
+                                className="flex items-center gap-1 text-xs text-[#3FE0A5] hover:underline"
+                              >
+                                <RefreshCwIcon size={12} />
+                                Retry
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                    {/* Speaking Rate */}
+                    <div className="col-span-2">
+                      <label className={labelClass}>
+                        Speaking Rate: {audioOptions.speakingRate.toFixed(1)}×
+                      </label>
+                      <input
+                        type="range"
+                        min={0.5}
+                        max={2.0}
+                        step={0.1}
+                        value={audioOptions.speakingRate}
+                        onChange={(e) =>
+                          setAudioOptions((prev) => ({
+                            ...prev,
+                            speakingRate: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-[#3FE0A5]"
+                      />
+                      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                        <span>0.5×</span><span>2.0×</span>
+                      </div>
+                    </div>
+                    {/* Pitch Adjustment */}
+                    <div className="col-span-2">
+                      <label className={labelClass}>
+                        Pitch Adjustment: {audioOptions.pitchAdjustment > 0 ? '+' : ''}{audioOptions.pitchAdjustment} semitones
+                      </label>
+                      <input
+                        type="range"
+                        min={-10}
+                        max={10}
+                        step={1}
+                        value={audioOptions.pitchAdjustment}
+                        onChange={(e) =>
+                          setAudioOptions((prev) => ({
+                            ...prev,
+                            pitchAdjustment: Number(e.target.value),
+                          }))
+                        }
+                        className="w-full accent-[#3FE0A5]"
+                      />
+                      <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                        <span>-10</span><span>+10</span>
+                      </div>
+                    </div>
+                    {/* Output Format */}
+                    <div>
+                      <label className={labelClass}>Output Format</label>
+                      <select
+                        value={audioOptions.outputFormat}
+                        onChange={(e) =>
+                          setAudioOptions((prev) => ({
+                            ...prev,
+                            outputFormat: e.target.value as AudioAdvancedOptions['outputFormat'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="mp3">MP3</option>
+                        <option value="wav">WAV</option>
+                      </select>
+                    </div>
+                    {/* Stability/Clarity — ElevenLabs only */}
+                    {audioOptions.provider === 'elevenlabs' && (
+                      <div className="col-span-2">
+                        <label className={labelClass}>
+                          Stability / Clarity: {audioOptions.stabilityClarity}
+                        </label>
+                        <input
+                          type="range"
+                          min={0}
+                          max={100}
+                          step={1}
+                          value={audioOptions.stabilityClarity}
+                          onChange={(e) =>
+                            setAudioOptions((prev) => ({
+                              ...prev,
+                              stabilityClarity: Number(e.target.value),
+                            }))
+                          }
+                          className="w-full accent-[#3FE0A5]"
+                        />
+                        <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+                          <span>0</span><span>100</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* ── Task 13.2/13.3 — Credit cost + Generate button ── */}
             <div className="flex items-center justify-between pt-2 border-t border-gray-200/50 dark:border-gray-700/30">
               <div className="text-sm text-gray-500 dark:text-gray-400">
-                Cost:{' '}
-                <span className="font-semibold text-[#3FE0A5]">
-                  {creditCost} credits
-                </span>
+                {pricingUnavailable ? (
+                  <span className="font-medium text-amber-500">Cost estimate unavailable</span>
+                ) : (
+                  <>
+                    Cost:{' '}
+                    <span className="font-semibold text-[#3FE0A5]">
+                      {creditCost} credits
+                    </span>
+                  </>
+                )}
               </div>
               <div className="flex gap-2">
                 {isGenerating && (

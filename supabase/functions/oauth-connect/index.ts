@@ -91,11 +91,22 @@ serve(async (req: Request) => {
 
     // ── Phase 2: OAuth callback ───────────────────────────────────────────────
     if (code && state) {
-      let stateData: { platform: string; redirect_uri: string; user_id: string }
+      let stateData: { platform: string; redirect_uri: string; user_id: string; team_id: string }
       try {
         stateData = JSON.parse(atob(state)) as typeof stateData
       } catch {
-        return Response.redirect(`${url.origin}?error=invalid_state`, 302)
+        return new Response(
+          JSON.stringify({ error: 'invalid_state' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
+      }
+
+      // Validate team_id before any database operations
+      if (!stateData.team_id || typeof stateData.team_id !== 'string' || stateData.team_id.trim() === '') {
+        return new Response(
+          JSON.stringify({ error: 'team_id_required' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        )
       }
 
       const config = PLATFORM_CONFIG[stateData.platform]
@@ -154,12 +165,13 @@ serve(async (req: Request) => {
       // Insert social_connections row
       const { error: insertError } = await supabase.from('social_connections').upsert({
         user_id:             stateData.user_id,
+        team_id:             stateData.team_id,
         platform:            stateData.platform,
         platform_account_id: stateData.user_id, // Will be updated with real account ID
         account_name:        stateData.platform,
         is_active:           true,
         vault_secret_id:     (vaultData as { id: string } | null)?.id ?? null,
-      }, { onConflict: 'user_id,platform,platform_account_id' })
+      }, { onConflict: 'team_id,platform,platform_account_id' })
 
       if (insertError) {
         console.error('Insert error:', insertError)
@@ -205,10 +217,12 @@ serve(async (req: Request) => {
     }
 
     // Build state parameter (base64-encoded JSON)
+    const teamId = url.searchParams.get('team_id') ?? ''
     const statePayload = btoa(JSON.stringify({
       platform,
       redirect_uri: redirectUri,
       user_id:      user.id,
+      team_id:      teamId,
     }))
 
     const callbackUrl = `${supabaseUrl}/functions/v1/oauth-connect`

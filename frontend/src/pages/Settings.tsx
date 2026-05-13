@@ -422,7 +422,7 @@ const PLATFORM_LABELS: Record<SocialPlatform, string> = {
 }
 
 const IntegrationsTab: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
   const navigate = useNavigate()
   const [connections, setConnections] = useState<SocialConnection[]>([])
   const [loading, setLoading] = useState(true)
@@ -430,14 +430,14 @@ const IntegrationsTab: React.FC = () => {
   useEffect(() => {
     if (!user) return
     setLoading(true)
-    getSocialConnections(user.id)
+    getSocialConnections(activeTeam?.id ?? null)
       .then(setConnections)
       .catch((error: unknown) => {
         reportError('IntegrationsTab.load', error)
         toast.error('Failed to load connected accounts')
       })
       .finally(() => setLoading(false))
-  }, [user])
+  }, [user, activeTeam])
 
   const connectedPlatforms = new Set(connections.filter((c) => c.is_active).map((c) => c.platform))
   const platforms: SocialPlatform[] = ['instagram', 'youtube', 'twitter', 'facebook', 'linkedin', 'tiktok']

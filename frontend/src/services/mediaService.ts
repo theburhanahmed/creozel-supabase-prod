@@ -2,21 +2,24 @@ import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
 import type { MediaItem, MediaType } from '../types'
 
-export async function getMediaItems(userId: string, teamId?: string, type?: MediaType): Promise<MediaItem[]> {
+export async function getMediaItems(userId: string, teamId?: string | null, type?: MediaType): Promise<MediaItem[]> {
   try {
     let query = supabase
       .from('media_items')
       .select('*')
       .is('deleted_at', null)
       .order('created_at', { ascending: false })
-    if (teamId) query = query.eq('team_id', teamId)
-    else query = query.eq('user_id', userId)
+    if (teamId) {
+      query = query.eq('team_id', teamId)
+    } else {
+      query = query.is('team_id', null)
+    }
     if (type) query = query.eq('type', type)
     const { data, error } = await query
-    if (error) { reportError('mediaService.getMediaItems', error); return [] }
+    if (error) { reportError('getMediaItems [mediaService.ts]', error); return [] }
     return (data ?? []) as MediaItem[]
   } catch (error: unknown) {
-    reportError('mediaService.getMediaItems', error)
+    reportError('getMediaItems [mediaService.ts]', error)
     return []
   }
 }
@@ -24,14 +27,17 @@ export async function getMediaItems(userId: string, teamId?: string, type?: Medi
 export async function uploadMediaItem(
   userId: string,
   file: File,
-  teamId?: string,
+  teamId?: string | null,
 ): Promise<MediaItem | null> {
+  if (!teamId) {
+    reportError('uploadMediaItem [mediaService.ts]', new Error('teamId is required'))
+    return null
+  }
   try {
-    const ext = file.name.split('.').pop() ?? 'bin'
-    const path = `${userId}/${Date.now()}.${ext}`
+    const path = `${teamId}/${userId}/${Date.now()}_${file.name}`
 
     const { error: uploadError } = await supabase.storage.from('media').upload(path, file, { upsert: false })
-    if (uploadError) { reportError('mediaService.uploadMediaItem', uploadError); return null }
+    if (uploadError) { reportError('uploadMediaItem [mediaService.ts]', uploadError); return null }
 
     const { data: urlData } = supabase.storage.from('media').getPublicUrl(path)
 
@@ -41,19 +47,23 @@ export async function uploadMediaItem(
       : 'document'
 
     const { data, error } = await supabase.from('media_items').insert({
-      user_id: userId, team_id: teamId ?? null, name: file.name, type,
+      user_id: userId, team_id: teamId, name: file.name, type,
       size_bytes: file.size, storage_path: path, public_url: urlData.publicUrl,
     }).select().single()
 
-    if (error) { reportError('mediaService.uploadMediaItem', error); return null }
+    if (error) { reportError('uploadMediaItem [mediaService.ts]', error); return null }
     return data as MediaItem
   } catch (error: unknown) {
-    reportError('mediaService.uploadMediaItem', error)
+    reportError('uploadMediaItem [mediaService.ts]', error)
     return null
   }
 }
 
 export async function deleteMediaItem(item: MediaItem): Promise<boolean> {
+  if (!item.team_id) {
+    reportError('deleteMediaItem [mediaService.ts]', new Error('item.team_id is required'))
+    return false
+  }
   try {
     // Remove from Storage
     await supabase.storage.from('media').remove([item.storage_path])
@@ -62,10 +72,11 @@ export async function deleteMediaItem(item: MediaItem): Promise<boolean> {
       .from('media_items')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', item.id)
-    if (error) { reportError('mediaService.deleteMediaItem', error); return false }
+      .eq('team_id', item.team_id)
+    if (error) { reportError('deleteMediaItem [mediaService.ts]', error); return false }
     return true
   } catch (error: unknown) {
-    reportError('mediaService.deleteMediaItem', error)
+    reportError('deleteMediaItem [mediaService.ts]', error)
     return false
   }
 }
