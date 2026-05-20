@@ -17,7 +17,11 @@ const ForgotPassword     = lazy(() => import('./pages/auth/ForgotPassword').then
 const ResetPassword      = lazy(() => import('./pages/auth/ResetPassword').then((m) => ({ default: m.ResetPassword })))
 const Onboarding         = lazy(() => import('./pages/onboarding/Onboarding').then((m) => ({ default: m.Onboarding })))
 const Dashboard          = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
-const ContentHub         = lazy(() => import('./pages/content/ContentHub').then((m) => ({ default: m.ContentHub })))
+const ContentGenerationStudio = lazy(() =>
+  import('./pages/content/ContentGenerationStudio').then((m) => ({
+    default: m.ContentGenerationStudio,
+  }))
+)
 const Calendar           = lazy(() => import('./pages/Calendar').then((m) => ({ default: m.Calendar })))
 const Analytics          = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })))
 const WorkflowDashboard  = lazy(() => import('./pages/workflow/WorkflowDashboard').then((m) => ({ default: m.WorkflowDashboard })))
@@ -89,7 +93,7 @@ function AppShell() {
                             <Route path="/"                        element={<Dashboard />} />
                             <Route path="/profile"                 element={<UserProfile />} />
                             <Route path="/notifications"           element={<Notifications />} />
-                            <Route path="/content/*"               element={<ContentHub />} />
+                            <Route path="/content/*"               element={<ContentGenerationStudio />} />
                             <Route path="/autopilot/*"             element={<AutopilotDashboard />} />
                             <Route path="/workflow"                element={<WorkflowDashboard />} />
                             <Route path="/analytics/*"             element={<Analytics />} />

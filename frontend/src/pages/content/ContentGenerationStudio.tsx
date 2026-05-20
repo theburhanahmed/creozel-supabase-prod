@@ -1,7 +1,9 @@
-import React, { useEffect, useState } from 'react'
+import React, { useCallback, useEffect, useState } from 'react'
+import { toast } from 'sonner'
 import { useAppContext } from '../../context/AppContext'
 import { useStudioState } from '../../hooks/useStudioState'
 import { useCreditEstimate } from '../../hooks/useCreditEstimate'
+import { useJobRealtime } from '../../hooks/useJobRealtime'
 import { computeCanGenerate } from '../../components/content/studio/studioCanGenerate'
 import { NoTeamEmptyState } from '../../components/content/studio/NoTeamEmptyState'
 import { StudioHeader } from '../../components/content/studio/StudioHeader'
@@ -10,8 +12,11 @@ import { ConfigurationPanel } from '../../components/content/studio/Configuratio
 import { OutputPanel } from '../../components/content/studio/OutputPanel'
 import { SaveAsPipelineModal } from '../../components/content/studio/SaveAsPipelineModal'
 import { getWallet } from '../../services/creditsService'
+import { createContentJob, cancelJob } from '../../services/contentService'
+import { saveMediaItemFromJob } from '../../services/mediaService'
 import { supabase } from '../../lib/supabase'
 import { reportError } from '../../utils/errorReporter'
+import type { ContentJob } from '../../types'
 
 /**
  * ContentGenerationStudio
@@ -109,9 +114,92 @@ export const ContentGenerationStudio: React.FC = () => {
   const [isPipelineModalOpen, setIsPipelineModalOpen] = useState(false)
   const onSaveAsPipeline = () => setIsPipelineModalOpen(true)
 
-  // ── Generate action stub (wired fully in task 15.3) ───────────────────────
+  // ── Generate action (task 15.3) ──────────────────────────────────────────
   const isGenerating = studio.isGenerating
-  const onGenerate = () => { /* task 15.3 */ }
+
+  // Job realtime callback — handles status transitions from the subscription
+  const handleJobUpdate = useCallback(
+    async (updatedJob: ContentJob) => {
+      studio.setActiveJob(updatedJob)
+
+      if (updatedJob.status === 'completed') {
+        studio.setIsGenerating(false)
+        toast.success('Content generated successfully!')
+
+        // Clear the draft now that generation succeeded
+        studio.clearDraft()
+
+        // Trigger media save flow — non-blocking; failure shows a warning toast
+        if (user?.id && activeTeam?.id) {
+          const saved = await saveMediaItemFromJob(updatedJob, user.id, activeTeam.id)
+          if (!saved) {
+            toast.warning('Content generated, but could not be saved to Media Library.')
+          }
+        }
+      } else if (updatedJob.status === 'failed') {
+        studio.setIsGenerating(false)
+        toast.error(updatedJob.error_message ?? 'Generation failed. Please try again.')
+      }
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [user?.id, activeTeam?.id],
+  )
+
+  // Subscribe to the active job via Realtime (no-ops when activeJob is null)
+  useJobRealtime(studio.activeJob?.id ?? null, handleJobUpdate)
+
+  const onGenerate = useCallback(async () => {
+    if (!user?.id) return
+
+    // Validate — errors are set in state and shown inline; just bail out
+    const isValid = studio.validateBeforeGenerate()
+    if (!isValid) return
+
+    studio.setIsGenerating(true)
+    studio.setActiveJob(null)
+
+    try {
+      const metadata = studio.buildMetadata()
+      const job = await createContentJob(user.id, {
+        type:      metadata.contentCategory as 'text' | 'image' | 'video' | 'audio',
+        prompt:    studio.prompt.trim(),
+        tone:      metadata.tone.toLowerCase(),
+        teamId:    activeTeam?.id,
+        metadata,
+      })
+      studio.setActiveJob(job)
+      // useJobRealtime will pick up the new jobId and subscribe automatically
+    } catch (err: unknown) {
+      studio.setIsGenerating(false)
+      toast.error(err instanceof Error ? err.message : 'Failed to start generation')
+    }
+  }, [user?.id, activeTeam?.id, studio])
+
+  const handleGenerate = () => { void onGenerate() }
+
+  // ── Cancel action (task 15.4, Requirement 10.7) ──────────────────────────
+  // Rendered while the active job is pending or running. Calls cancelJob;
+  // on success updates activeJob to the cancelled status; on failure shows
+  // an error toast and leaves the job status unchanged.
+  const onCancel = useCallback(async () => {
+    if (!studio.activeJob || !user?.id) return
+    const jobId = studio.activeJob.id
+    try {
+      await cancelJob(jobId, user.id)
+      // On success: reflect the cancelled status in the Output Panel
+      studio.setActiveJob({
+        ...studio.activeJob,
+        status: 'cancelled',
+        error_message: 'Cancelled by user',
+      })
+      studio.setIsGenerating(false)
+    } catch (err: unknown) {
+      // On failure: show error toast, leave job status unchanged (Req 10.7)
+      toast.error(err instanceof Error ? err.message : 'Failed to cancel job. Please try again.')
+    }
+  }, [studio, user?.id])
+
+  const handleCancel = () => { void onCancel() }
 
   // onRegenerate resets the active job so the user can re-submit with the
   // same configuration (Requirement 11.10). Full wiring in task 15.3.
@@ -195,7 +283,7 @@ export const ContentGenerationStudio: React.FC = () => {
             // Actions
             canGenerate={canGenerate}
             isGenerating={isGenerating}
-            onGenerate={onGenerate}
+            onGenerate={handleGenerate}
             onSaveAsPipeline={onSaveAsPipeline}
 
             // Brand voice (Requirement 5.4, 5.5)
@@ -206,6 +294,7 @@ export const ContentGenerationStudio: React.FC = () => {
           <OutputPanel
             activeJob={studio.activeJob}
             onRegenerate={onRegenerate}
+            onCancel={handleCancel}
           />
         }
       />

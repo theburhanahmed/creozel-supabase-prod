@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
-import type { MediaItem, MediaType } from '../types'
+import type { ContentJob, MediaItem, MediaType } from '../types'
 
 export async function getMediaItems(userId: string, teamId?: string | null, type?: MediaType): Promise<MediaItem[]> {
   try {
@@ -55,6 +55,57 @@ export async function uploadMediaItem(
     return data as MediaItem
   } catch (error: unknown) {
     reportError('uploadMediaItem [mediaService.ts]', error)
+    return null
+  }
+}
+
+/**
+ * Persist a completed content job's result to the media_items table.
+ * Derives the media type from the job's content type.
+ * Returns the created MediaItem or null on failure.
+ */
+export async function saveMediaItemFromJob(
+  job: ContentJob,
+  userId: string,
+  teamId: string,
+): Promise<MediaItem | null> {
+  if (!job.result_url) return null
+
+  try {
+    const typeMap: Record<string, MediaType> = {
+      image: 'image',
+      video: 'video',
+      audio: 'audio',
+      text:  'document',
+    }
+    const mediaType: MediaType = typeMap[job.type] ?? 'document'
+
+    // Derive a human-readable name from the prompt (first 60 chars)
+    const name = job.prompt.slice(0, 60).trim() || 'Generated content'
+
+    const { data, error } = await supabase
+      .from('media_items')
+      .insert({
+        user_id:      userId,
+        team_id:      teamId,
+        name,
+        type:         mediaType,
+        size_bytes:   0,
+        storage_path: job.result_url,
+        public_url:   job.result_url,
+        metadata:     { source_job_id: job.id },
+      })
+      .select()
+      .single()
+
+    if (error) {
+      reportError('saveMediaItemFromJob [mediaService.ts]', error, { jobId: job.id })
+      return null
+    }
+
+    return data as MediaItem
+  } catch (error: unknown) {
+    reportError('saveMediaItemFromJob [mediaService.ts]', error, { jobId: job.id })
     return null
   }
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { Loader2Icon, SendIcon } from 'lucide-react'
+import { Loader2Icon, SendIcon, XCircleIcon } from 'lucide-react'
 import { JobStatusDisplay } from './JobStatusDisplay'
 import { OutputActions } from './OutputActions'
 import {
@@ -22,6 +22,11 @@ export interface OutputPanelProps {
   activeJob: ContentJob | null
   /** Called when the user clicks the Regenerate button. */
   onRegenerate: () => void
+  /**
+   * Called when the user clicks the Cancel button (shown while job is
+   * pending or running). Requirement 10.7.
+   */
+  onCancel: () => void
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -61,7 +66,7 @@ const COMPLETED_STATUS: ContentJob['status'] = 'completed'
  * Requirements: 10.4, 10.5, 10.6, 10.7, 10.8, 11.1, 11.2, 11.3, 11.4,
  *               11.5, 11.6, 11.7, 11.8, 11.9, 11.10, 11.11, 11.12
  */
-export const OutputPanel: React.FC<OutputPanelProps> = ({ activeJob, onRegenerate }) => {
+export const OutputPanel: React.FC<OutputPanelProps> = ({ activeJob, onRegenerate, onCancel }) => {
   // ── Inline text fetch state (for text/video jobs) ──────────────────────────
   const [isFetchingContent, setIsFetchingContent] = useState(false)
   const [fetchError, setFetchError] = useState(false)
@@ -154,8 +159,30 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ activeJob, onRegenerat
     <div className="flex flex-col gap-4 h-full" aria-label="Output panel">
 
       {/* ── Job status header (Req 11.1) ─────────────────────────────────── */}
-      <div className="flex items-center">
+      <div className="flex items-center justify-between gap-3">
         <JobStatusDisplay job={activeJob} />
+
+        {/* Cancel button — visible while job is pending or running (Req 10.7) */}
+        {(activeJob.status === 'pending' || activeJob.status === 'running') && (
+          <button
+            type="button"
+            onClick={onCancel}
+            aria-label="Cancel generation job"
+            className={[
+              'inline-flex items-center gap-1.5',
+              'px-3 py-1.5 rounded-lg text-sm font-medium',
+              'border border-red-300 dark:border-red-700',
+              'text-red-600 dark:text-red-400',
+              'bg-red-50 dark:bg-red-900/20',
+              'hover:bg-red-100 dark:hover:bg-red-900/40',
+              'transition-colors duration-150',
+              'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400',
+            ].join(' ')}
+          >
+            <XCircleIcon size={14} aria-hidden="true" className="shrink-0" />
+            <span>Cancel</span>
+          </button>
+        )}
       </div>
 
       {/* ── Content area ─────────────────────────────────────────────────── */}
