@@ -1,6 +1,7 @@
 import React, { Suspense, lazy } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { Toaster } from 'sonner'
+import { Analytics as VercelAnalytics } from '@vercel/analytics/react'
 import { AppProvider, useAppContext } from './context/AppContext'
 import { AuthGuard } from './components/auth/AuthGuard'
 import { ErrorBoundary } from './components/ui/ErrorBoundary'
@@ -48,6 +49,7 @@ export function App() {
     <ErrorBoundary>
       <AppProvider>
         <AppShell />
+        <VercelAnalytics />
       </AppProvider>
     </ErrorBoundary>
   )
