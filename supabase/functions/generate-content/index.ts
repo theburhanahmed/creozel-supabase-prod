@@ -10,6 +10,10 @@
  *
  * The function reads the full job from the DB, calls the AI provider,
  * stores the result, and updates the job status.
+ *
+ * FIX: Hoisted job_id outside try/catch so the catch block can access it
+ * directly without re-parsing the consumed request body. Added console.error
+ * logging so errors are visible in edge function logs.
  */
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
@@ -128,12 +132,15 @@ serve(async (req: Request) => {
   const serviceKey   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
   const openaiKey    = Deno.env.get('OPENAI_API_KEY')
   const elevenKey    = Deno.env.get('ELEVENLABS_API_KEY')
-  const replicateKey = Deno.env.get('REPLICATE_API_TOKEN')
 
   const supabase = createClient(supabaseUrl, serviceKey)
 
+  // Hoist job_id so the catch block can reference it without re-parsing the body
+  let job_id: string | null = null
+
   try {
-    const { job_id } = await req.json() as { job_id: string }
+    const body = await req.json() as { job_id: string }
+    job_id = body.job_id
 
     if (!job_id) {
       return new Response(
@@ -156,25 +163,18 @@ serve(async (req: Request) => {
       )
     }
 
-    // ── Metadata schema validation (Requirement 18.4) ─────────────────────────
-    const metadata = job.metadata as Record<string, unknown> | null ?? {}
+    // ── Metadata schema validation ────────────────────────────────────────────
+    const metadata = (job.metadata as Record<string, unknown> | null) ?? {}
     const contentCategory = metadata.contentCategory
     const contentFormat   = metadata.contentFormat
 
     if (contentCategory == null || contentFormat == null) {
       const validationError = 'Invalid metadata: contentCategory and contentFormat are required.'
-
-      // Mark job as failed
       await supabase
         .from('content_jobs')
-        .update({
-          status:        'failed',
-          error_message: validationError,
-          updated_at:    new Date().toISOString(),
-        })
+        .update({ status: 'failed', error_message: validationError, updated_at: new Date().toISOString() })
         .eq('id', job_id)
 
-      // Release reserved credits (Requirement 18.5 — all error paths must release credits)
       const { data: failWallet } = await supabase
         .from('wallets')
         .select('id, reserved')
@@ -195,21 +195,16 @@ serve(async (req: Request) => {
       )
     }
 
-    // ── Resolve provider config from FORMAT_PROVIDER_MAP (task 16.2) ──────────
-    // Falls back to legacy job.type key when contentFormat is not in the map.
+    // Resolve provider config
     const formatConfig = FORMAT_PROVIDER_MAP[contentFormat as string] ?? FORMAT_PROVIDER_MAP[job.type]
-
-    // ── Read schema version (task 16.3) ───────────────────────────────────────
-    // Default to '0' for legacy jobs that predate the ContentFormatMetadataSchema.
     const schemaVersion = (metadata.schemaVersion as string) ?? '0'
 
-    // ── Repurposing source detection (task 16.4, Requirements 17.6, 17.8, 18.5) ──
-    // Helper: fail job + release credits + return 400 response
+    // Helper: fail job + release credits + return error response
     const failJobWithCredits = async (msg: string): Promise<Response> => {
       await supabase
         .from('content_jobs')
         .update({ status: 'failed', error_message: msg, updated_at: new Date().toISOString() })
-        .eq('id', job_id)
+        .eq('id', job_id!)
 
       const { data: fw } = await supabase
         .from('wallets')
@@ -232,12 +227,10 @@ serve(async (req: Request) => {
     }
 
     let sourceContent: string | null = null
-
     const sourceJobId   = metadata.sourceJobId   as string | null | undefined
     const sourceMediaId = metadata.sourceMediaId as string | null | undefined
 
     if (sourceJobId) {
-      // Fetch the source content_jobs row
       const { data: sourceJob } = await supabase
         .from('content_jobs')
         .select('result_url, status')
@@ -248,28 +241,21 @@ serve(async (req: Request) => {
         return await failJobWithCredits('Source content is no longer available.')
       }
 
-      // Fetch the text content from result_url with a 10-second timeout
       try {
         const controller = new AbortController()
         const timeoutId = setTimeout(() => controller.abort(), 10_000)
-
         let sourceRes: Response
         try {
           sourceRes = await fetch(sourceJob.result_url, { signal: controller.signal })
         } finally {
           clearTimeout(timeoutId)
         }
-
-        if (!sourceRes.ok) {
-          return await failJobWithCredits('Failed to fetch source content.')
-        }
-
+        if (!sourceRes.ok) return await failJobWithCredits('Failed to fetch source content.')
         sourceContent = await sourceRes.text()
       } catch {
         return await failJobWithCredits('Failed to fetch source content.')
       }
     } else if (sourceMediaId) {
-      // Fetch the source media_items row (Requirement 17.6, 17.8)
       const { data: mediaItem } = await supabase
         .from('media_items')
         .select('public_url, name, type')
@@ -280,9 +266,6 @@ serve(async (req: Request) => {
         return await failJobWithCredits('Source content is no longer available.')
       }
 
-      // Inject the media public_url as context for the AI prompt.
-      // For image/video/audio assets the URL is the primary reference;
-      // for document assets the URL points to the stored file.
       const mediaLabel = mediaItem.name ?? 'Media asset'
       sourceContent = `[Source media — ${mediaLabel} (${mediaItem.type ?? 'file'}): ${mediaItem.public_url}]`
     }
@@ -298,20 +281,17 @@ serve(async (req: Request) => {
 
     // ── Route to AI provider ──────────────────────────────────────────────────
     if (schemaVersion === '0') {
-      // ── Legacy routing: use job.type (schemaVersion '0') ───────────────────
+      // Legacy routing: use job.type
       if (job.type === 'text' || job.type === 'video') {
-        // Text and video scripts use OpenAI
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-        // Read advanced options from metadata with safe fallbacks (task 15.1)
-        const model = (job.metadata?.model as string) ?? 'gpt-4'
-        const tone = (job.metadata?.tone as string) ?? 'professional'
-        const outputFormat = (job.metadata?.output_format as string) ?? 'blog_post'
+        const model        = (job.metadata?.model as string)          ?? 'gpt-4o'
+        const tone         = (job.metadata?.tone as string)           ?? 'professional'
+        const outputFormat = (job.metadata?.output_format as string)  ?? 'blog_post'
         const wordCountMax = (job.metadata?.word_count_max as number) ?? 1000
-        const language = (job.metadata?.language as string) ?? 'en'
-        const brandVoice = (job.metadata?.brand_voice as string | null) ?? null
+        const language     = (job.metadata?.language as string)       ?? 'en'
+        const brandVoice   = (job.metadata?.brand_voice as string | null) ?? null
 
-        // Fetch brand voice from brand_profiles table (non-fatal if missing)
         const { data: brandProfile } = await supabase
           .from('brand_profiles')
           .select('voice_guidelines')
@@ -319,8 +299,7 @@ serve(async (req: Request) => {
           .maybeSingle()
 
         const voiceGuidelines = brandVoice ?? brandProfile?.voice_guidelines ?? null
-
-        const repurposingInstructions = (metadata.repurposingInstructions as string | null | undefined) ?? null
+        const repurposingInstructions = (metadata.repurposingInstructions as string | null) ?? null
         const repurposingContext = sourceContent
           ? `\n\nSource content to repurpose:\n${sourceContent}${repurposingInstructions ? `\n\nRepurposing instructions: ${repurposingInstructions}` : ''}`
           : ''
@@ -329,20 +308,16 @@ serve(async (req: Request) => {
           ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
           : `You are a professional content creator. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
 
-        // Approximate token count: wordCountMax * 1.5 (task 15.2)
         const maxTokens = job.type === 'video' ? 2000 : Math.ceil(wordCountMax * 1.5)
 
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiKey}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: job.prompt },
+              { role: 'user',   content: job.prompt },
             ],
             max_tokens: maxTokens,
           }),
@@ -353,159 +328,103 @@ serve(async (req: Request) => {
           throw new Error(`OpenAI error: ${err}`)
         }
 
-        const openaiData = await openaiRes.json() as {
-          choices: Array<{ message: { content: string } }>
-        }
+        const openaiData = await openaiRes.json() as { choices: Array<{ message: { content: string } }> }
         resultText = openaiData.choices[0]?.message?.content ?? ''
 
-        // Store text result in Storage as a .txt file
         const fileName = `${job.user_id}/${job_id}.txt`
         const { error: uploadError } = await supabase.storage
           .from('generated-content')
-          .upload(fileName, new Blob([resultText], { type: 'text/plain' }), {
-            upsert: true,
-          })
+          .upload(fileName, new Blob([resultText], { type: 'text/plain' }), { upsert: true })
 
         if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('generated-content')
-            .getPublicUrl(fileName)
+          const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
           resultUrl = urlData.publicUrl
         }
 
       } else if (job.type === 'image') {
-        // Images use DALL-E 3
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-        // Read advanced options from metadata with safe fallbacks (task 15.1)
         const resolution = (job.metadata?.resolution as string) ?? '1024x1024'
-        const style = (job.metadata?.style as string) ?? 'photorealistic'
-        const numImages = (job.metadata?.num_images as number) ?? 1
-        // seed and negativePrompt are read but not passed to DALL-E (not supported by the API)
-        // They are preserved here for potential future use with Stable Diffusion
-        // const negativePrompt = (job.metadata?.negative_prompt as string) ?? ''
-        // const seed = (job.metadata?.seed as number | undefined)
-
-        // Append style to prompt if set (task 15.2)
+        const style      = (job.metadata?.style as string)      ?? 'photorealistic'
+        const numImages  = (job.metadata?.num_images as number) ?? 1
         const styledPrompt = style ? `${job.prompt} Style: ${style}.` : job.prompt
 
         const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt: styledPrompt,
-            n: numImages,
-            size: resolution,
-            response_format: 'url',
-          }),
+          headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'dall-e-3', prompt: styledPrompt, n: numImages, size: resolution, response_format: 'url' }),
         })
 
-        if (!dalleRes.ok) {
-          const err = await dalleRes.text()
-          throw new Error(`DALL-E error: ${err}`)
-        }
+        if (!dalleRes.ok) { const err = await dalleRes.text(); throw new Error(`DALL-E error: ${err}`) }
 
         const dalleData = await dalleRes.json() as { data: Array<{ url: string }> }
         const imageUrl = dalleData.data[0]?.url
 
         if (imageUrl) {
-          // Download and re-upload to our Storage for persistence
-          const imgRes = await fetch(imageUrl)
-          const imgBlob = await imgRes.blob()
+          const imgBlob  = await (await fetch(imageUrl)).blob()
           const fileName = `${job.user_id}/${job_id}.png`
-
           const { error: uploadError } = await supabase.storage
             .from('generated-content')
             .upload(fileName, imgBlob, { contentType: 'image/png', upsert: true })
 
           if (!uploadError) {
-            const { data: urlData } = supabase.storage
-              .from('generated-content')
-              .getPublicUrl(fileName)
+            const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
             resultUrl = urlData.publicUrl
           } else {
-            resultUrl = imageUrl // Fall back to DALL-E URL
+            resultUrl = imageUrl
           }
         }
 
       } else if (job.type === 'audio') {
-        // Audio uses ElevenLabs TTS
         if (!elevenKey) throw new Error('ELEVENLABS_API_KEY not configured')
 
-        // Read advanced options from metadata with safe fallbacks (task 15.1)
-        const voiceId = (job.metadata?.voice_id as string) ?? '21m00Tcm4TlvDq8ikWAM' // Default: Rachel
-        const speakingRate = (job.metadata?.speaking_rate as number) ?? 1.0
+        const voiceId         = (job.metadata?.voice_id as string)          ?? '21m00Tcm4TlvDq8ikWAM'
+        const speakingRate    = (job.metadata?.speaking_rate as number)      ?? 1.0
         const stabilityClarity = (job.metadata?.stability_clarity as number) ?? 50
-        const outputFormat = (job.metadata?.output_format as string) ?? 'mp3'
+        const outputFmt       = (job.metadata?.output_format as string)      ?? 'mp3'
+        const audioExt        = outputFmt === 'wav' ? 'wav' : 'mp3'
+        const audioContentType = outputFmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
 
-        // Determine file extension from output format
-        const audioExt = outputFormat === 'wav' ? 'wav' : 'mp3'
-        const audioContentType = outputFormat === 'wav' ? 'audio/wav' : 'audio/mpeg'
+        const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: job.prompt,
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: { stability: stabilityClarity / 100, similarity_boost: 0.75, speaking_rate: speakingRate },
+          }),
+        })
 
-        const elevenRes = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-          {
-            method: 'POST',
-            headers: {
-              'xi-api-key': elevenKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              text: job.prompt,
-              model_id: 'eleven_monolingual_v1',
-              // Pass stability (normalised 0–1) and speaking_rate from metadata (task 15.2)
-              voice_settings: {
-                stability: stabilityClarity / 100,
-                similarity_boost: 0.75,
-                speaking_rate: speakingRate,
-              },
-            }),
-          },
-        )
-
-        if (!elevenRes.ok) {
-          const err = await elevenRes.text()
-          throw new Error(`ElevenLabs error: ${err}`)
-        }
+        if (!elevenRes.ok) { const err = await elevenRes.text(); throw new Error(`ElevenLabs error: ${err}`) }
 
         const audioBlob = await elevenRes.blob()
-        const fileName = `${job.user_id}/${job_id}.${audioExt}`
-
+        const fileName  = `${job.user_id}/${job_id}.${audioExt}`
         const { error: uploadError } = await supabase.storage
           .from('generated-content')
           .upload(fileName, audioBlob, { contentType: audioContentType, upsert: true })
 
         if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('generated-content')
-            .getPublicUrl(fileName)
+          const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
           resultUrl = urlData.publicUrl
         }
       }
 
     } else {
-      // ── schemaVersion '1': route via formatConfig.provider ─────────────────
+      // schemaVersion '1': route via formatConfig.provider
       if (!formatConfig) throw new Error(`Unknown content format: ${String(contentFormat)}`)
 
       if (formatConfig.provider === 'openai_text') {
-        // OpenAI chat completions — reads from advancedOptions with legacy flat-field fallbacks
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-        const advOpts = (metadata.advancedOptions as Record<string, unknown>) ?? {}
-        const model = (advOpts.model as string) ?? (metadata.model as string) ?? 'gpt-4'
-        const tone = (metadata.tone as string) ?? 'professional'
-        const outputFormat = (advOpts.outputFormat as string) ?? (metadata.output_format as string) ?? 'blog_post'
-        const wordCountMax = (metadata.length as Record<string, unknown>)?.maxWords as number
-          ?? (metadata.word_count_max as number)
-          ?? 1000
-        const language = (advOpts.language as string) ?? (metadata.language as string) ?? 'en'
+        const advOpts      = (metadata.advancedOptions as Record<string, unknown>) ?? {}
+        const model        = (advOpts.model as string)        ?? (metadata.model as string)          ?? 'gpt-4o'
+        const tone         = (metadata.tone as string)        ?? 'professional'
+        const outputFormat = (advOpts.outputFormat as string) ?? (metadata.output_format as string)  ?? 'blog_post'
+        const wordCountMax = ((metadata.length as Record<string, unknown>)?.maxWords as number)
+          ?? (metadata.word_count_max as number) ?? 1000
+        const language   = (advOpts.language as string)    ?? (metadata.language as string)   ?? 'en'
         const brandVoice = (advOpts.brandVoice as string | null) ?? (metadata.brand_voice as string | null) ?? null
 
-        // Fetch brand voice from brand_profiles table (non-fatal if missing)
         const { data: brandProfile } = await supabase
           .from('brand_profiles')
           .select('voice_guidelines')
@@ -513,8 +432,7 @@ serve(async (req: Request) => {
           .maybeSingle()
 
         const voiceGuidelines = brandVoice ?? brandProfile?.voice_guidelines ?? null
-
-        const repurposingInstructions = (metadata.repurposingInstructions as string | null | undefined) ?? null
+        const repurposingInstructions = (metadata.repurposingInstructions as string | null) ?? null
         const repurposingContext = sourceContent
           ? `\n\nSource content to repurpose:\n${sourceContent}${repurposingInstructions ? `\n\nRepurposing instructions: ${repurposingInstructions}` : ''}`
           : ''
@@ -523,7 +441,6 @@ serve(async (req: Request) => {
           ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
           : `You are a professional content creator. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
 
-        // Prepend the format-specific prompt template prefix when present
         const userPrompt = formatConfig.promptTemplatePrefix
           ? `${formatConfig.promptTemplatePrefix}${job.prompt}`
           : job.prompt
@@ -532,15 +449,12 @@ serve(async (req: Request) => {
 
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiKey}`,
-            'Content-Type': 'application/json',
-          },
+          headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model,
             messages: [
               { role: 'system', content: systemPrompt },
-              { role: 'user', content: userPrompt },
+              { role: 'user',   content: userPrompt },
             ],
             max_tokens: maxTokens,
           }),
@@ -551,141 +465,92 @@ serve(async (req: Request) => {
           throw new Error(`OpenAI error: ${err}`)
         }
 
-        const openaiData = await openaiRes.json() as {
-          choices: Array<{ message: { content: string } }>
-        }
+        const openaiData = await openaiRes.json() as { choices: Array<{ message: { content: string } }> }
         resultText = openaiData.choices[0]?.message?.content ?? ''
 
-        // Store text result in Storage as a .txt file
         const fileName = `${job.user_id}/${job_id}.txt`
         const { error: uploadError } = await supabase.storage
           .from('generated-content')
-          .upload(fileName, new Blob([resultText], { type: 'text/plain' }), {
-            upsert: true,
-          })
+          .upload(fileName, new Blob([resultText], { type: 'text/plain' }), { upsert: true })
 
         if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('generated-content')
-            .getPublicUrl(fileName)
+          const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
           resultUrl = urlData.publicUrl
         }
 
       } else if (formatConfig.provider === 'openai_image') {
-        // DALL-E 3 image generation
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-        const advOpts = (metadata.advancedOptions as Record<string, unknown>) ?? {}
+        const advOpts    = (metadata.advancedOptions as Record<string, unknown>) ?? {}
         const resolution = (advOpts.resolution as string) ?? (metadata.resolution as string) ?? '1024x1024'
-        const style = (advOpts.style as string) ?? (metadata.style as string) ?? 'photorealistic'
-        const numImages = (metadata.length as Record<string, unknown>)?.quantity as number
-          ?? (metadata.num_images as number)
-          ?? 1
-
-        // Append style to prompt if set
+        const style      = (advOpts.style as string)      ?? (metadata.style as string)      ?? 'photorealistic'
+        const numImages  = ((metadata.length as Record<string, unknown>)?.quantity as number)
+          ?? (metadata.num_images as number) ?? 1
         const styledPrompt = style ? `${job.prompt} Style: ${style}.` : job.prompt
 
         const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${openaiKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            model: 'dall-e-3',
-            prompt: styledPrompt,
-            n: numImages,
-            size: resolution,
-            response_format: 'url',
-          }),
+          headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'dall-e-3', prompt: styledPrompt, n: numImages, size: resolution, response_format: 'url' }),
         })
 
-        if (!dalleRes.ok) {
-          const err = await dalleRes.text()
-          throw new Error(`DALL-E error: ${err}`)
-        }
+        if (!dalleRes.ok) { const err = await dalleRes.text(); throw new Error(`DALL-E error: ${err}`) }
 
         const dalleData = await dalleRes.json() as { data: Array<{ url: string }> }
-        const imageUrl = dalleData.data[0]?.url
+        const imageUrl  = dalleData.data[0]?.url
 
         if (imageUrl) {
-          // Download and re-upload to our Storage for persistence
-          const imgRes = await fetch(imageUrl)
-          const imgBlob = await imgRes.blob()
+          const imgBlob  = await (await fetch(imageUrl)).blob()
           const fileName = `${job.user_id}/${job_id}.png`
-
           const { error: uploadError } = await supabase.storage
             .from('generated-content')
             .upload(fileName, imgBlob, { contentType: 'image/png', upsert: true })
 
           if (!uploadError) {
-            const { data: urlData } = supabase.storage
-              .from('generated-content')
-              .getPublicUrl(fileName)
+            const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
             resultUrl = urlData.publicUrl
           } else {
-            resultUrl = imageUrl // Fall back to DALL-E URL
+            resultUrl = imageUrl
           }
         }
 
       } else if (formatConfig.provider === 'elevenlabs') {
-        // ElevenLabs TTS audio generation
         if (!elevenKey) throw new Error('ELEVENLABS_API_KEY not configured')
 
-        const advOpts = (metadata.advancedOptions as Record<string, unknown>) ?? {}
-        const voiceId = (advOpts.voice as string) ?? (metadata.voice_id as string) ?? '21m00Tcm4TlvDq8ikWAM' // Default: Rachel
-        const speakingRate = (metadata.length as Record<string, unknown>)?.speakingRate as number
-          ?? (metadata.speaking_rate as number)
-          ?? 1.0
-        const stability = (advOpts.stability as number) ?? null
-        const stabilityClarity = stability !== null ? stability * 100 : (metadata.stability_clarity as number) ?? 50
-        const outputFormat = (advOpts.outputFormat as string) ?? (metadata.output_format as string) ?? 'mp3'
+        const advOpts      = (metadata.advancedOptions as Record<string, unknown>) ?? {}
+        const voiceId      = (advOpts.voice as string)        ?? (metadata.voice_id as string)       ?? '21m00Tcm4TlvDq8ikWAM'
+        const speakingRate = ((metadata.length as Record<string, unknown>)?.speakingRate as number)
+          ?? (metadata.speaking_rate as number) ?? 1.0
+        const stability        = (advOpts.stability as number) ?? null
+        const stabilityClarity = stability !== null ? stability * 100 : ((metadata.stability_clarity as number) ?? 50)
+        const outputFmt        = (advOpts.outputFormat as string) ?? (metadata.output_format as string) ?? 'mp3'
+        const audioExt         = outputFmt === 'wav' ? 'wav' : 'mp3'
+        const audioContentType = outputFmt === 'wav' ? 'audio/wav' : 'audio/mpeg'
 
-        // Determine file extension from output format
-        const audioExt = outputFormat === 'wav' ? 'wav' : 'mp3'
-        const audioContentType = outputFormat === 'wav' ? 'audio/wav' : 'audio/mpeg'
+        const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+          method: 'POST',
+          headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            text: job.prompt,
+            model_id: 'eleven_monolingual_v1',
+            voice_settings: { stability: stabilityClarity / 100, similarity_boost: 0.75, speaking_rate: speakingRate },
+          }),
+        })
 
-        const elevenRes = await fetch(
-          `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
-          {
-            method: 'POST',
-            headers: {
-              'xi-api-key': elevenKey,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              text: job.prompt,
-              model_id: 'eleven_monolingual_v1',
-              voice_settings: {
-                stability: stabilityClarity / 100,
-                similarity_boost: 0.75,
-                speaking_rate: speakingRate,
-              },
-            }),
-          },
-        )
-
-        if (!elevenRes.ok) {
-          const err = await elevenRes.text()
-          throw new Error(`ElevenLabs error: ${err}`)
-        }
+        if (!elevenRes.ok) { const err = await elevenRes.text(); throw new Error(`ElevenLabs error: ${err}`) }
 
         const audioBlob = await elevenRes.blob()
-        const fileName = `${job.user_id}/${job_id}.${audioExt}`
-
+        const fileName  = `${job.user_id}/${job_id}.${audioExt}`
         const { error: uploadError } = await supabase.storage
           .from('generated-content')
           .upload(fileName, audioBlob, { contentType: audioContentType, upsert: true })
 
         if (!uploadError) {
-          const { data: urlData } = supabase.storage
-            .from('generated-content')
-            .getPublicUrl(fileName)
+          const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
           resultUrl = urlData.publicUrl
         }
 
       } else {
-        // replicate — Phase 2, not yet implemented
         throw new Error('Replicate provider not yet implemented')
       }
     }
@@ -760,45 +625,41 @@ serve(async (req: Request) => {
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
 
-    // Mark job as failed
-    try {
-      const { job_id } = await req.clone().json() as { job_id?: string }
-      if (job_id) {
+    // Always log so the real error shows in Supabase edge function logs
+    console.error('[generate-content] error:', message, err)
+
+    // job_id is hoisted above — safe to use here without re-parsing the body
+    if (job_id) {
+      try {
         await supabase
+          .from('content_jobs')
+          .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
+          .eq('id', job_id)
+
+        const { data: jobRow } = await supabase
           .from('content_jobs')
           .select('credits_reserved, user_id')
           .eq('id', job_id)
           .maybeSingle()
-          .then(async ({ data: job }) => {
+
+        if (jobRow) {
+          const { data: failWallet } = await supabase
+            .from('wallets')
+            .select('id, reserved')
+            .eq('user_id', jobRow.user_id)
+            .is('team_id', null)
+            .maybeSingle()
+
+          if (failWallet) {
             await supabase
-              .from('content_jobs')
-              .update({
-                status:        'failed',
-                error_message: message,
-                updated_at:    new Date().toISOString(),
-              })
-              .eq('id', job_id)
-
-            // Release reserved credits
-            if (job) {
-              const { data: failWallet } = await supabase
-                .from('wallets')
-                .select('id, reserved')
-                .eq('user_id', job.user_id)
-                .is('team_id', null)
-                .maybeSingle()
-
-              if (failWallet) {
-                await supabase
-                  .from('wallets')
-                  .update({ reserved: Math.max(0, failWallet.reserved - (job.credits_reserved ?? 0)) })
-                  .eq('id', failWallet.id)
-              }
-            }
-          })
+              .from('wallets')
+              .update({ reserved: Math.max(0, failWallet.reserved - (jobRow.credits_reserved ?? 0)) })
+              .eq('id', failWallet.id)
+          }
+        }
+      } catch (cleanupErr) {
+        console.error('[generate-content] cleanup error:', cleanupErr)
       }
-    } catch {
-      // Best-effort cleanup
     }
 
     return new Response(

@@ -251,24 +251,50 @@ const VideoAdvancedOptionsPanel: React.FC<VideoAdvancedOptionsProps> = ({
   options,
   onChange,
 }) => {
+  // KlingAI models support mode + audio; others have different param sets
+  const isKling = options.model.startsWith('klingai/')
+  const isWan   = options.model.startsWith('alibaba/')
+  const isVeo   = options.model.startsWith('google/')
+  const isSeedance = options.model.startsWith('bytedance/')
+
+  // Duration options vary by model
+  const durationOptions: Array<{ value: number; label: string }> = isVeo
+    ? [{ value: 8, label: '8s' }]
+    : isWan
+    ? [{ value: 5, label: '5s' }, { value: 8, label: '8s' }, { value: 10, label: '10s' }]
+    : isSeedance
+    ? [{ value: 5, label: '5s' }, { value: 8, label: '8s' }, { value: 10, label: '10s' }]
+    : [{ value: 5, label: '5s' }, { value: 10, label: '10s' }] // kling / grok
+
   return (
     <div className="grid grid-cols-2 gap-4">
-      {/* AI Model */}
-      <div>
-        <label className={labelClass}>AI Model</label>
+      {/* Model */}
+      <div className="col-span-2">
+        <label className={labelClass}>Video Model</label>
         <select
           value={options.model}
           onChange={(e) =>
-            onChange({
-              ...options,
-              model: e.target.value as VideoAdvancedOptions['model'],
-            })
+            onChange({ ...options, model: e.target.value as VideoAdvancedOptions['model'] })
           }
-          aria-label="AI model"
+          aria-label="Video AI model"
           className={fieldClass}
         >
-          <option value="gpt-4">GPT-4</option>
-          <option value="gpt-3.5">GPT-3.5</option>
+          <optgroup label="KlingAI">
+            <option value="klingai/kling-v2.6-t2v">Kling v2.6 — audio support</option>
+            <option value="klingai/kling-v3.0-t2v">Kling v3.0 — multi-shot, 15s</option>
+          </optgroup>
+          <optgroup label="Alibaba">
+            <option value="alibaba/wan-v2.6-t2v">Wan v2.6 — native audio</option>
+          </optgroup>
+          <optgroup label="Google">
+            <option value="google/veo-3.1-generate-001">Veo 3.1 — cinematic quality</option>
+          </optgroup>
+          <optgroup label="xAI">
+            <option value="xai/grok-imagine-video">Grok Imagine — fast, 1–15s</option>
+          </optgroup>
+          <optgroup label="ByteDance">
+            <option value="bytedance/seedance-v1.5-pro">Seedance v1.5 Pro — audio sync</option>
+          </optgroup>
         </select>
       </div>
 
@@ -278,55 +304,69 @@ const VideoAdvancedOptionsPanel: React.FC<VideoAdvancedOptionsProps> = ({
         <select
           value={options.aspectRatio}
           onChange={(e) =>
-            onChange({
-              ...options,
-              aspectRatio: e.target.value as VideoAdvancedOptions['aspectRatio'],
-            })
+            onChange({ ...options, aspectRatio: e.target.value as VideoAdvancedOptions['aspectRatio'] })
           }
           aria-label="Aspect ratio"
           className={fieldClass}
         >
-          <option value="16:9">16:9 (Landscape)</option>
-          <option value="9:16">9:16 (Portrait)</option>
-          <option value="1:1">1:1 (Square)</option>
+          <option value="16:9">16:9 — Landscape</option>
+          <option value="9:16">9:16 — Portrait / Reels</option>
+          <option value="1:1">1:1 — Square</option>
         </select>
       </div>
 
-      {/* Include B-Roll Toggle */}
-      <div className="flex items-center">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.includeBRoll}
-            onChange={(e) =>
-              onChange({ ...options, includeBRoll: e.target.checked })
-            }
-            className={checkboxClass}
-            aria-label="Include B-roll suggestions"
-          />
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Include B-roll suggestions
-          </span>
-        </label>
+      {/* Duration */}
+      <div>
+        <label className={labelClass}>Duration</label>
+        <select
+          value={options.duration}
+          onChange={(e) =>
+            onChange({ ...options, duration: Number(e.target.value) as VideoAdvancedOptions['duration'] })
+          }
+          aria-label="Video duration"
+          className={fieldClass}
+        >
+          {durationOptions.map((d) => (
+            <option key={d.value} value={d.value}>{d.label}</option>
+          ))}
+        </select>
       </div>
 
-      {/* Brand Voice Toggle */}
-      <div className="flex items-center">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={options.brandVoiceEnabled}
+      {/* Quality mode — KlingAI only */}
+      {isKling && (
+        <div>
+          <label className={labelClass}>Quality Mode</label>
+          <select
+            value={options.mode}
             onChange={(e) =>
-              onChange({ ...options, brandVoiceEnabled: e.target.checked })
+              onChange({ ...options, mode: e.target.value as VideoAdvancedOptions['mode'] })
             }
-            className={checkboxClass}
-            aria-label="Use brand voice guidelines"
-          />
-          <span className="text-sm text-gray-600 dark:text-gray-400">
-            Brand voice
-          </span>
-        </label>
-      </div>
+            aria-label="Quality mode"
+            className={fieldClass}
+          >
+            <option value="std">Standard</option>
+            <option value="pro">Professional</option>
+          </select>
+        </div>
+      )}
+
+      {/* Generate audio — supported by Kling v2.6+, Wan v2.6, Veo 3, Seedance v1.5 */}
+      {(isKling || isWan || isVeo || isSeedance) && (
+        <div className="flex items-center">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={options.generateAudio}
+              onChange={(e) => onChange({ ...options, generateAudio: e.target.checked })}
+              className={checkboxClass}
+              aria-label="Generate audio alongside video"
+            />
+            <span className="text-sm text-gray-600 dark:text-gray-400">
+              Generate audio
+            </span>
+          </label>
+        </div>
+      )}
     </div>
   )
 }

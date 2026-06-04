@@ -337,12 +337,20 @@ export interface ImageAdvancedOptions {
 }
 
 export interface VideoAdvancedOptions {
-  model: 'gpt-4' | 'gpt-3.5'
-  sceneCount: number      // 1–10
-  durationPerScene: 15 | 30 | 60
+  /** Vercel AI Gateway model identifier */
+  model:
+    | 'klingai/kling-v2.6-t2v'
+    | 'klingai/kling-v3.0-t2v'
+    | 'alibaba/wan-v2.6-t2v'
+    | 'google/veo-3.1-generate-001'
+    | 'xai/grok-imagine-video'
+    | 'bytedance/seedance-v1.5-pro'
+  duration: 5 | 8 | 10 | 15   // seconds
   aspectRatio: '16:9' | '9:16' | '1:1'
-  includeBRoll: boolean
-  brandVoiceEnabled: boolean
+  /** Quality mode — std or pro (KlingAI only, ignored for other providers) */
+  mode: 'std' | 'pro'
+  /** Generate audio alongside the video (provider-dependent) */
+  generateAudio: boolean
 }
 
 export interface AudioAdvancedOptions {
@@ -374,12 +382,11 @@ export const DEFAULT_IMAGE_OPTIONS: ImageAdvancedOptions = {
 }
 
 export const DEFAULT_VIDEO_OPTIONS: VideoAdvancedOptions = {
-  model: 'gpt-4',
-  sceneCount: 3,
-  durationPerScene: 30,
+  model: 'klingai/kling-v2.6-t2v',
+  duration: 5,
   aspectRatio: '16:9',
-  includeBRoll: false,
-  brandVoiceEnabled: false,
+  mode: 'std',
+  generateAudio: false,
 }
 
 export const DEFAULT_AUDIO_OPTIONS: AudioAdvancedOptions = {

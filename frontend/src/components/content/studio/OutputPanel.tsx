@@ -34,8 +34,10 @@ export interface OutputPanelProps {
 /**
  * Job types that require fetching inline text content from result_url.
  * Requirements 11.2, 11.5.
+ * Note: 'video' is intentionally excluded — video jobs now produce .mp4 files
+ * rendered by VideoResultViewer's native <video> player, not inline text.
  */
-const TEXT_FETCH_TYPES: ReadonlySet<ContentJob['type']> = new Set(['text', 'video'])
+const TEXT_FETCH_TYPES: ReadonlySet<ContentJob['type']> = new Set(['text'])
 
 /**
  * Statuses that allow the Copy, Download, and Publish buttons to be enabled.
