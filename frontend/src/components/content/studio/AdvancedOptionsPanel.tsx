@@ -69,8 +69,10 @@ const TextAdvancedOptionsPanel: React.FC<TextAdvancedOptionsProps> = ({
           aria-label="AI model"
           className={fieldClass}
         >
+          <option value="gpt-4o">GPT-4o</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
           <option value="gpt-4">GPT-4</option>
-          <option value="gpt-3.5">GPT-3.5</option>
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
         </select>
       </div>
 

@@ -285,7 +285,9 @@ serve(async (req: Request) => {
       if (job.type === 'text' || job.type === 'video') {
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
-        const model        = (job.metadata?.model as string)          ?? 'gpt-4o'
+        const rawModel     = (job.metadata?.model as string) ?? 'gpt-4o'
+        const MODEL_MAP2: Record<string, string> = { 'gpt-3.5': 'gpt-3.5-turbo', 'gpt-4': 'gpt-4', 'gpt-4o': 'gpt-4o', 'gpt-4o-mini': 'gpt-4o-mini', 'gpt-3.5-turbo': 'gpt-3.5-turbo' }
+        const model        = MODEL_MAP2[rawModel] ?? 'gpt-4o'
         const tone         = (job.metadata?.tone as string)           ?? 'professional'
         const outputFormat = (job.metadata?.output_format as string)  ?? 'blog_post'
         const wordCountMax = (job.metadata?.word_count_max as number) ?? 1000
@@ -417,7 +419,10 @@ serve(async (req: Request) => {
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
         const advOpts      = (metadata.advancedOptions as Record<string, unknown>) ?? {}
-        const model        = (advOpts.model as string)        ?? (metadata.model as string)          ?? 'gpt-4o'
+        const rawModel     = (advOpts.model as string) ?? (metadata.model as string) ?? 'gpt-4o'
+        // Sanitize legacy/invalid model names to valid OpenAI identifiers
+        const MODEL_MAP: Record<string, string> = { 'gpt-3.5': 'gpt-3.5-turbo', 'gpt-4': 'gpt-4', 'gpt-4o': 'gpt-4o', 'gpt-4o-mini': 'gpt-4o-mini', 'gpt-3.5-turbo': 'gpt-3.5-turbo' }
+        const model        = MODEL_MAP[rawModel] ?? 'gpt-4o'
         const tone         = (metadata.tone as string)        ?? 'professional'
         const outputFormat = (advOpts.outputFormat as string) ?? (metadata.output_format as string)  ?? 'blog_post'
         const wordCountMax = ((metadata.length as Record<string, unknown>)?.maxWords as number)

@@ -318,7 +318,7 @@ export interface PaginatedResponse<T> {
 // ─── Advanced Content Generation Options ─────────────────────────────────────
 
 export interface TextAdvancedOptions {
-  model: 'gpt-4' | 'gpt-3.5'
+  model: 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4' | 'gpt-3.5-turbo'
   tone: 'professional' | 'casual' | 'humorous' | 'persuasive' | 'informative'
   outputFormat: 'blog_post' | 'caption' | 'ad_copy' | 'thread' | 'email'
   wordCountMin: number   // 1–10000
@@ -363,7 +363,7 @@ export interface AudioAdvancedOptions {
 }
 
 export const DEFAULT_TEXT_OPTIONS: TextAdvancedOptions = {
-  model: 'gpt-4',
+  model: 'gpt-4o',
   tone: 'professional',
   outputFormat: 'blog_post',
   wordCountMin: 300,
