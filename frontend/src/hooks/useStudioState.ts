@@ -431,13 +431,9 @@ export function useStudioState(teamId: string | null): UseStudioStateReturn {
           ? audioOptions.outputFormat
           : null,
       aspectRatio: contentCategory === 'video' ? videoOptions.aspectRatio : null,
-      includeBRoll: contentCategory === 'video' ? videoOptions.includeBRoll : null,
+      includeBRoll: null,
       brandVoice:
-        contentCategory === 'text'
-          ? textOptions.brandVoiceEnabled
-          : contentCategory === 'video'
-            ? videoOptions.brandVoiceEnabled
-            : null,
+        contentCategory === 'text' ? textOptions.brandVoiceEnabled : null,
       language: contentCategory === 'text' ? textOptions.language : null,
     }
 
@@ -543,8 +539,6 @@ export function useStudioState(teamId: string | null): UseStudioStateReturn {
             model: (ao.model as VideoAdvancedOptions['model']) ?? videoOptions.model,
             aspectRatio:
               (ao.aspectRatio as VideoAdvancedOptions['aspectRatio']) ?? videoOptions.aspectRatio,
-            includeBRoll: ao.includeBRoll ?? videoOptions.includeBRoll,
-            brandVoiceEnabled: ao.brandVoice ?? videoOptions.brandVoiceEnabled,
           })
         } else if (newCategory === 'audio') {
           setAudioOptions({
@@ -637,8 +631,6 @@ export function useStudioState(teamId: string | null): UseStudioStateReturn {
             model: (ao.model as VideoAdvancedOptions['model']) ?? videoOptions.model,
             aspectRatio:
               (ao.aspectRatio as VideoAdvancedOptions['aspectRatio']) ?? videoOptions.aspectRatio,
-            includeBRoll: ao.includeBRoll ?? videoOptions.includeBRoll,
-            brandVoiceEnabled: ao.brandVoice ?? videoOptions.brandVoiceEnabled,
           })
         } else if (newCategory === 'audio') {
           setAudioOptions({

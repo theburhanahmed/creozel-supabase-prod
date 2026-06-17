@@ -302,14 +302,11 @@ export const ContentHub: React.FC = () => {
         }
       case 'video':
         return {
-          model:              videoOptions.model,
-          scene_count:        videoOptions.sceneCount,
-          duration_per_scene: videoOptions.durationPerScene,
-          aspect_ratio:       videoOptions.aspectRatio,
-          include_b_roll:     videoOptions.includeBRoll,
-          brand_voice:        videoOptions.brandVoiceEnabled
-            ? 'Use the brand voice guidelines from the team profile.'
-            : null,
+          model:          videoOptions.model,
+          duration:       videoOptions.duration,
+          aspect_ratio:   videoOptions.aspectRatio,
+          mode:           videoOptions.mode,
+          generate_audio: videoOptions.generateAudio,
         }
       case 'audio':
         return {
@@ -762,9 +759,9 @@ export const ContentHub: React.FC = () => {
                 </button>
                 {advancedOpen.video && (
                   <div className="px-4 pb-4 grid grid-cols-2 gap-4 border-t border-gray-200/50 dark:border-gray-700/30 pt-4">
-                    {/* AI Model */}
-                    <div>
-                      <label className={labelClass}>AI Model</label>
+                    {/* Video Model */}
+                    <div className="col-span-2">
+                      <label className={labelClass}>Video Model</label>
                       <select
                         value={videoOptions.model}
                         onChange={(e) =>
@@ -775,45 +772,22 @@ export const ContentHub: React.FC = () => {
                         }
                         className={fieldClass}
                       >
-                        <option value="gpt-4o">GPT-4o</option>
-                        <option value="gpt-4o-mini">GPT-4o mini</option>
-                        <option value="gpt-4">GPT-4</option>
-                        <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
-                      </select>
-                    </div>
-                    {/* Scene Count */}
-                    <div>
-                      <label className={labelClass}>Scene Count (1–10)</label>
-                      <input
-                        type="number"
-                        min={1}
-                        max={10}
-                        value={videoOptions.sceneCount}
-                        onChange={(e) =>
-                          setVideoOptions((prev) => ({
-                            ...prev,
-                            sceneCount: Math.max(1, Math.min(10, Number(e.target.value))),
-                          }))
-                        }
-                        className={fieldClass}
-                      />
-                    </div>
-                    {/* Duration Per Scene */}
-                    <div>
-                      <label className={labelClass}>Duration Per Scene</label>
-                      <select
-                        value={videoOptions.durationPerScene}
-                        onChange={(e) =>
-                          setVideoOptions((prev) => ({
-                            ...prev,
-                            durationPerScene: Number(e.target.value) as VideoAdvancedOptions['durationPerScene'],
-                          }))
-                        }
-                        className={fieldClass}
-                      >
-                        <option value={15}>15 seconds</option>
-                        <option value={30}>30 seconds</option>
-                        <option value={60}>60 seconds</option>
+                        <optgroup label="KlingAI">
+                          <option value="klingai/kling-v2.6-t2v">Kling v2.6 — audio support</option>
+                          <option value="klingai/kling-v3.0-t2v">Kling v3.0 — multi-shot, 15s</option>
+                        </optgroup>
+                        <optgroup label="Alibaba">
+                          <option value="alibaba/wan-v2.6-t2v">Wan v2.6 — native audio</option>
+                        </optgroup>
+                        <optgroup label="Google">
+                          <option value="google/veo-3.1-generate-001">Veo 3.1 — cinematic quality</option>
+                        </optgroup>
+                        <optgroup label="xAI">
+                          <option value="xai/grok-imagine-video">Grok Imagine — fast, 1–15s</option>
+                        </optgroup>
+                        <optgroup label="ByteDance">
+                          <option value="bytedance/seedance-v1.5-pro">Seedance v1.5 Pro — audio sync</option>
+                        </optgroup>
                       </select>
                     </div>
                     {/* Aspect Ratio */}
@@ -834,41 +808,58 @@ export const ContentHub: React.FC = () => {
                         <option value="1:1">1:1 (Square)</option>
                       </select>
                     </div>
-                    {/* B-Roll Toggle */}
+                    {/* Duration */}
                     <div>
-                      <label className="flex items-center gap-2 cursor-pointer mt-4">
-                        <input
-                          type="checkbox"
-                          checked={videoOptions.includeBRoll}
-                          onChange={(e) =>
-                            setVideoOptions((prev) => ({
-                              ...prev,
-                              includeBRoll: e.target.checked,
-                            }))
-                          }
-                          className="h-4 w-4 text-[#3FE0A5] focus:ring-[#3FE0A5] border-gray-300 rounded"
-                        />
-                        <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Include B-roll suggestions
-                        </span>
-                      </label>
+                      <label className={labelClass}>Duration</label>
+                      <select
+                        value={videoOptions.duration}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            duration: Number(e.target.value) as VideoAdvancedOptions['duration'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value={5}>5 seconds</option>
+                        <option value={8}>8 seconds</option>
+                        <option value={10}>10 seconds</option>
+                        <option value={15}>15 seconds</option>
+                      </select>
                     </div>
-                    {/* Brand Voice Toggle */}
+                    {/* Mode */}
+                    <div>
+                      <label className={labelClass}>Mode</label>
+                      <select
+                        value={videoOptions.mode}
+                        onChange={(e) =>
+                          setVideoOptions((prev) => ({
+                            ...prev,
+                            mode: e.target.value as VideoAdvancedOptions['mode'],
+                          }))
+                        }
+                        className={fieldClass}
+                      >
+                        <option value="std">Standard</option>
+                        <option value="pro">Pro</option>
+                      </select>
+                    </div>
+                    {/* Generate Audio Toggle */}
                     <div>
                       <label className="flex items-center gap-2 cursor-pointer mt-4">
                         <input
                           type="checkbox"
-                          checked={videoOptions.brandVoiceEnabled}
+                          checked={videoOptions.generateAudio}
                           onChange={(e) =>
                             setVideoOptions((prev) => ({
                               ...prev,
-                              brandVoiceEnabled: e.target.checked,
+                              generateAudio: e.target.checked,
                             }))
                           }
                           className="h-4 w-4 text-[#3FE0A5] focus:ring-[#3FE0A5] border-gray-300 rounded"
                         />
                         <span className="text-sm text-gray-600 dark:text-gray-400">
-                          Use brand voice guidelines
+                          Generate audio
                         </span>
                       </label>
                     </div>
