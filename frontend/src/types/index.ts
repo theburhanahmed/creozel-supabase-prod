@@ -351,6 +351,14 @@ export interface VideoAdvancedOptions {
   mode: 'std' | 'pro'
   /** Generate audio alongside the video (provider-dependent) */
   generateAudio: boolean
+  /** Number of scenes (legacy ContentHub field) */
+  sceneCount: number
+  /** Duration per scene in seconds (legacy ContentHub field) */
+  durationPerScene: number
+  /** Include B-roll footage */
+  includeBRoll: boolean
+  /** Use team brand voice guidelines */
+  brandVoiceEnabled: boolean
 }
 
 export interface AudioAdvancedOptions {
@@ -387,6 +395,10 @@ export const DEFAULT_VIDEO_OPTIONS: VideoAdvancedOptions = {
   aspectRatio: '16:9',
   mode: 'std',
   generateAudio: false,
+  sceneCount: 3,
+  durationPerScene: 5,
+  includeBRoll: false,
+  brandVoiceEnabled: false,
 }
 
 export const DEFAULT_AUDIO_OPTIONS: AudioAdvancedOptions = {
