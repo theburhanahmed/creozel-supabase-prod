@@ -118,13 +118,9 @@ function buildMetadata(inputs: BuildMetadataInputs): ContentFormatMetadataSchema
         ? audioOptions.outputFormat
         : null,
     aspectRatio: contentCategory === 'video' ? videoOptions.aspectRatio : null,
-    includeBRoll: contentCategory === 'video' ? videoOptions.includeBRoll : null,
+    includeBRoll: null,
     brandVoice:
-      contentCategory === 'text'
-        ? textOptions.brandVoiceEnabled
-        : contentCategory === 'video'
-          ? videoOptions.brandVoiceEnabled
-          : null,
+      contentCategory === 'text' ? textOptions.brandVoiceEnabled : null,
     language: contentCategory === 'text' ? textOptions.language : null,
   }
 
