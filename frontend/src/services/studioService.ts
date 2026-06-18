@@ -234,7 +234,9 @@ export async function getRepurposingSources(
       type: 'job' as const,
       id: job.id,
       label: job.prompt ? job.prompt.slice(0, 80) : 'Untitled Job',
-      format: ((job.metadata as any)?.contentFormat as ContentFormat) ?? null,
+      format:
+        ((job.metadata as { contentFormat?: ContentFormat } | null | undefined)
+          ?.contentFormat) ?? null,
       previewUrl: job.result_url ?? null,
       promptExcerpt: job.prompt ? job.prompt.slice(0, 80) : null,
     }))
@@ -272,3 +274,4 @@ export async function getRepurposingSources(
     return []
   }
 }
+

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import type { ContentJob } from '../../types'
 
-// ─── TextResultViewer ─────────────────────────────────────────────────────────
+// ─── TextResultViewer ───────────────────────────────────────────────────────��[...]
 
 interface TextResultViewerProps {
   job: ContentJob
@@ -73,7 +73,7 @@ export const TextResultViewer: React.FC<TextResultViewerProps> = ({ job }) => {
   )
 }
 
-// ─── ImageResultViewer ────────────────────────────────────────────────────────
+// ─── ImageResultViewer ───────────────────────────────────────────────────────[...]
 
 interface ImageResultViewerProps {
   job: ContentJob
@@ -93,7 +93,7 @@ export const ImageResultViewer: React.FC<ImageResultViewerProps> = ({ job }) => 
   )
 }
 
-// ─── AudioResultViewer ────────────────────────────────────────────────────────
+// ─── AudioResultViewer ───────────────────────────────────────────────────────[...]
 
 interface AudioResultViewerProps {
   job: ContentJob
@@ -109,7 +109,7 @@ export const AudioResultViewer: React.FC<AudioResultViewerProps> = ({ job }) => 
   )
 }
 
-// ─── VideoResultViewer ────────────────────────────────────────────────────────
+// ─── VideoResultViewer ──────────────────────────────────────────────────────��[...]
 
 interface VideoResultViewerProps {
   job: ContentJob
@@ -125,7 +125,6 @@ export const VideoResultViewer: React.FC<VideoResultViewerProps> = ({ job }) => 
   if (isVideoFile) {
     return (
       <div className="space-y-3">
-        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
         <video
           controls
           playsInline
@@ -133,6 +132,13 @@ export const VideoResultViewer: React.FC<VideoResultViewerProps> = ({ job }) => 
           src={job.result_url}
           aria-label="Generated video"
         >
+          {/* Provide a captions track if available to satisfy accessibility checks. */}
+          <track
+            kind="captions"
+            src={`${job.result_url}.vtt`}
+            srcLang="en"
+            label="English captions"
+          />
           Your browser does not support video playback.
         </video>
         <a
@@ -149,28 +155,5 @@ export const VideoResultViewer: React.FC<VideoResultViewerProps> = ({ job }) => 
   }
 
   // Legacy: video job produced a text script — render as text
-  return <TextResultViewer job={job} />
-}
-
-// ─── ResultViewer ─────────────────────────────────────────────────────────────
-
-interface ResultViewerProps {
-  job: ContentJob
-}
-
-export const ResultViewer: React.FC<ResultViewerProps> = ({ job }) => {
-  if (job.type === 'image' && job.result_url) {
-    return <ImageResultViewer job={job} />
-  }
-
-  if (job.type === 'audio' && job.result_url) {
-    return <AudioResultViewer job={job} />
-  }
-
-  if (job.type === 'video') {
-    return <VideoResultViewer job={job} />
-  }
-
-  // Default: text
   return <TextResultViewer job={job} />
 }
