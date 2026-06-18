@@ -38,7 +38,7 @@
 import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types ───────────────────────────────────────────────────────────[...]
 
 /** The shape of a successfully decoded OAuth state payload */
 interface OAuthStatePayload {
@@ -115,13 +115,13 @@ function encodeOAuthState(payload: OAuthStatePayload): string {
   return btoa(JSON.stringify(payload))
 }
 
-// ─── Arbitraries ─────────────────────────────────────────────────────────────
+// ─── Arbitraries ────────────────────────────────────────────────────────��[...]
 
 /** Generates absent state values: null, undefined, or empty string */
 const absentStateArb: fc.Arbitrary<null | undefined | ''> = fc.oneof(
-  fc.constant(null as null),
-  fc.constant(undefined as undefined),
-  fc.constant('' as ''),
+  fc.constant(null),
+  fc.constant(undefined),
+  fc.constant('' as const),
 )
 
 /**
@@ -209,7 +209,7 @@ const validStateArb: fc.Arbitrary<string> = fc.record({
   team_id:      fc.uuid(),
 }).map((payload) => encodeOAuthState(payload as OAuthStatePayload))
 
-// ─── Tests ────────────────────────────────────────────────────────────────────
+// ─── Tests ──────────────────────────────────────────────────────────��[...]
 
 describe('Property 9 — OAuth callback rejects invalid state', () => {
 

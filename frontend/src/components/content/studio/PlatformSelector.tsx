@@ -163,7 +163,6 @@ export const PlatformSelector: React.FC<PlatformSelectorProps> = ({
         focusPlatformButton(prev)
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [visiblePlatforms, onChange],
   )
 
