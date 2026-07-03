@@ -61,11 +61,11 @@ export const ContentGenerationStudio: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return
     let cancelled = false
-    void getWallet(user.id).then((wallet) => {
+    void getWallet(user.id, activeTeam?.id).then((wallet) => {
       if (!cancelled) setBalance(wallet?.balance ?? null)
     })
     return () => { cancelled = true }
-  }, [user?.id])
+  }, [user?.id, activeTeam?.id])
 
   // ── Brand voice active (Requirement 5.4, 5.5) ────────────────────────────
   const [brandVoiceActive, setBrandVoiceActive] = useState(false)

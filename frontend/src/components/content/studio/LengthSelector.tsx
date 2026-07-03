@@ -2,6 +2,9 @@ import React, { useId } from 'react'
 import { AlertCircleIcon } from 'lucide-react'
 import type { ContentCategory, LengthConfig, LengthPreset } from '../../../types'
 
+// Disable fast-refresh warning for the helper exported alongside the component.
+/* eslint-disable react-refresh/only-export-components */
+
 export interface LengthSelectorProps {
   category: ContentCategory
   value: LengthConfig

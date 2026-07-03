@@ -64,7 +64,7 @@ export const TemplateGrid: React.FC<TemplateGridProps> = ({
    */
   const handleDelete = useCallback(
     async (templateId: string) => {
-      const success = await deleteTemplate(templateId)
+      const success = await deleteTemplate(templateId, teamId)
       if (success) {
         // Notify parent if provided (e.g. for toast notifications)
         onDelete?.(templateId)
@@ -73,7 +73,7 @@ export const TemplateGrid: React.FC<TemplateGridProps> = ({
       // this restores any optimistic state
       refetch()
     },
-    [onDelete, refetch],
+    [onDelete, refetch, teamId],
   )
 
   /**

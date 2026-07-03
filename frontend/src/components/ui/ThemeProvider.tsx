@@ -1,5 +1,8 @@
 import React, { useEffect, useState, createContext, useContext } from 'react'
 
+// Disable fast-refresh warning for context and hook exported alongside the component.
+/* eslint-disable react-refresh/only-export-components */
+
 type Theme = 'dark' | 'light' | 'system'
 
 interface ThemeContextType { theme: Theme; setTheme: (t: Theme) => void; isDarkMode: boolean }

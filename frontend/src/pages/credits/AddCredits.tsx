@@ -29,8 +29,9 @@ const IS_SANDBOX = DODO_ENV === 'test_mode'
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const AddCredits: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
   const [searchParams] = useSearchParams()
+  const teamId = activeTeam?.id
 
   const [state, setState] = useState<AddCreditsState>({
     packs: [],
@@ -45,7 +46,7 @@ export const AddCredits: React.FC = () => {
   const fetchWallet = async () => {
     if (!user) return
     try {
-      const w = await getWallet(user.id)
+      const w = await getWallet(user.id, teamId)
       setState((prev) => ({ ...prev, wallet: w }))
     } catch (error: unknown) {
       reportError('AddCredits.fetchWallet', error)
@@ -60,7 +61,7 @@ export const AddCredits: React.FC = () => {
     void (async () => {
       const [packs, wallet] = await Promise.all([
         getCreditPacks(),
-        getWallet(user.id),
+        getWallet(user.id, teamId),
       ])
       setState((prev) => ({
         ...prev,
@@ -79,7 +80,7 @@ export const AddCredits: React.FC = () => {
       toast.info('Checkout cancelled. No charges were made.')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
+  }, [user, teamId])
 
   // ─── Purchase handler ──────────────────────────────────────────────────────
 
@@ -121,23 +122,6 @@ export const AddCredits: React.FC = () => {
         purchaseState: 'error',
         purchasingId: null,
       }))
-    }
-  }
-
-  // ─── Test top-up handler ───────────────────────────────────────────────────
-
-  const handleTestTopup = async () => {
-    if (!user || !state.wallet) return
-    try {
-      const { error } = await supabase.functions.invoke('admin-topup', {
-        body: { amount: 100, description: 'Test credit grant' },
-      })
-      if (error) throw new Error(error.message)
-      toast.success('100 test credits added!')
-      await fetchWallet()
-    } catch (error: unknown) {
-      reportError('AddCredits.handleTestTopup', error)
-      toast.error('Failed to add test credits.')
     }
   }
 
@@ -259,21 +243,6 @@ export const AddCredits: React.FC = () => {
           })
         )}
       </div>
-
-      {/* Test top-up button (sandbox only) */}
-      {IS_SANDBOX && (
-        <div className="glass-enhanced rounded-2xl p-4 flex items-center justify-between gap-4">
-          <p className="text-sm text-gray-600 dark:text-gray-400">
-            Sandbox mode: add test credits without going through checkout.
-          </p>
-          <button
-            onClick={() => { void handleTestTopup() }}
-            className="flex-shrink-0 px-4 py-2 rounded-xl bg-yellow-100 text-yellow-800 dark:bg-yellow-900/40 dark:text-yellow-300 text-sm font-semibold hover:opacity-90 transition-opacity"
-          >
-            Test: Add 100 Credits
-          </button>
-        </div>
-      )}
 
       {/* Payment info footer */}
       <div className="glass-enhanced rounded-2xl p-4 flex items-start gap-3">

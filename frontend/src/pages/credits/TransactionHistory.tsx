@@ -21,13 +21,14 @@ function formatLocalTimestamp(isoString: string): string {
 }
 
 export const TransactionHistory: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
+  const teamId = activeTeam?.id
   const [transactions, setTransactions] = useState<CreditTransaction[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (user) void getTransactions(user.id).then((t) => { setTransactions(t); setLoading(false) })
-  }, [user])
+    if (user) void getTransactions(user.id, 50, teamId).then((t) => { setTransactions(t); setLoading(false) })
+  }, [user, teamId])
 
   return (
     <div className="space-y-4 max-w-2xl mx-auto">

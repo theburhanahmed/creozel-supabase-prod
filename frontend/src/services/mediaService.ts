@@ -29,12 +29,9 @@ export async function uploadMediaItem(
   file: File,
   teamId?: string | null,
 ): Promise<MediaItem | null> {
-  if (!teamId) {
-    reportError('uploadMediaItem [mediaService.ts]', new Error('teamId is required'))
-    return null
-  }
   try {
-    const path = `${teamId}/${userId}/${Date.now()}_${file.name}`
+    const scopePath = teamId ? `${teamId}/${userId}` : `${userId}/personal`
+    const path = `${scopePath}/${Date.now()}_${file.name}`
 
     const { error: uploadError } = await supabase.storage.from('media').upload(path, file, { upsert: false })
     if (uploadError) { reportError('uploadMediaItem [mediaService.ts]', uploadError); return null }
@@ -47,7 +44,7 @@ export async function uploadMediaItem(
       : 'document'
 
     const { data, error } = await supabase.from('media_items').insert({
-      user_id: userId, team_id: teamId, name: file.name, type,
+      user_id: userId, team_id: teamId ?? null, name: file.name, type,
       size_bytes: file.size, storage_path: path, public_url: urlData.publicUrl,
     }).select().single()
 
@@ -111,19 +108,21 @@ export async function saveMediaItemFromJob(
 }
 
 export async function deleteMediaItem(item: MediaItem): Promise<boolean> {
-  if (!item.team_id) {
-    reportError('deleteMediaItem [mediaService.ts]', new Error('item.team_id is required'))
-    return false
-  }
   try {
     // Remove from Storage
     await supabase.storage.from('media').remove([item.storage_path])
     // Soft delete — set deleted_at instead of hard delete
-    const { error } = await supabase
+    let query = supabase
       .from('media_items')
       .update({ deleted_at: new Date().toISOString() })
       .eq('id', item.id)
-      .eq('team_id', item.team_id)
+      .eq('user_id', item.user_id)
+    if (item.team_id) {
+      query = query.eq('team_id', item.team_id)
+    } else {
+      query = query.is('team_id', null)
+    }
+    const { error } = await query
     if (error) { reportError('deleteMediaItem [mediaService.ts]', error); return false }
     return true
   } catch (error: unknown) {

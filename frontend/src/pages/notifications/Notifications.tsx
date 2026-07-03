@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { BellIcon, CheckIcon, BellOffIcon } from 'lucide-react'
+import { CheckIcon, BellOffIcon } from 'lucide-react'
 import { useAppContext } from '../../context/AppContext'
 import { getNotifications, markAsRead, markAllAsRead, subscribeToNotifications } from '../../services/notificationService'
 import type { Notification } from '../../types'

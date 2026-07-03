@@ -102,21 +102,23 @@ export async function saveTemplate(
  * Delete a user-saved template by id.
  * Returns true on success, false on error.
  */
-export async function deleteTemplate(templateId: string): Promise<boolean> {
+export async function deleteTemplate(templateId: string, teamId: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('studio_templates')
       .delete()
       .eq('id', templateId)
+      .eq('is_system', false)
+      .eq('team_id', teamId)
 
     if (error) {
-      reportError('studioService.deleteTemplate', error, { templateId })
+      reportError('studioService.deleteTemplate', error, { templateId, teamId })
       return false
     }
 
     return true
   } catch (error: unknown) {
-    reportError('studioService.deleteTemplate', error, { templateId })
+    reportError('studioService.deleteTemplate', error, { templateId, teamId })
     return false
   }
 }

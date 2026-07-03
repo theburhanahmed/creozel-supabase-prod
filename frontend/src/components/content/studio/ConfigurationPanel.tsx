@@ -5,7 +5,6 @@ import type {
   AudioAdvancedOptions,
   ContentCategory,
   ContentFormat,
-  ContentFormatMetadataSchema,
   ImageAdvancedOptions,
   LengthConfig,
   RepurposingSource,

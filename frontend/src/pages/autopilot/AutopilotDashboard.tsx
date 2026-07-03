@@ -1,6 +1,6 @@
 import React from 'react'
 import { Link } from 'react-router-dom'
-import { RocketIcon, WorkflowIcon, CalendarIcon, SparklesIcon, ExternalLinkIcon } from 'lucide-react'
+import { WorkflowIcon, CalendarIcon, SparklesIcon, ExternalLinkIcon, PlusIcon } from 'lucide-react'
 
 export const AutopilotDashboard: React.FC = () => {
   const n8nUrl = (import.meta.env.VITE_N8N_URL as string | undefined) ?? 'http://localhost:5678'
@@ -32,6 +32,11 @@ export const AutopilotDashboard: React.FC = () => {
                 <ExternalLinkIcon size={16} />
                 Open n8n Editor
               </a>
+              <Link to="/autopilot/builder"
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity">
+                <PlusIcon size={16} />
+                Create Pipeline
+              </Link>
               <Link to="/workflow"
                 className="flex items-center gap-2 px-4 py-2 glass-light text-gray-700 dark:text-gray-300 text-sm font-medium rounded-xl hover:glass transition-colors">
                 <WorkflowIcon size={16} />

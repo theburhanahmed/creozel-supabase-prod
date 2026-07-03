@@ -21,6 +21,64 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+async function fetchPlatformAccountInfo(platform: string, accessToken: string): Promise<{ accountId: string; accountName: string }> {
+  const fallback = { accountId: 'unknown', accountName: platform }
+  try {
+    if (platform === 'twitter') {
+      const res = await fetch('https://api.twitter.com/2/users/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!res.ok) return fallback
+      const data = await res.json() as { data?: { id: string; username: string } }
+      return { accountId: data.data?.id ?? fallback.accountId, accountName: data.data?.username ?? fallback.accountName }
+    }
+    if (platform === 'linkedin') {
+      const res = await fetch('https://api.linkedin.com/v2/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!res.ok) return fallback
+      const data = await res.json() as { id?: string; localizedFirstName?: string; localizedLastName?: string }
+      return {
+        accountId: data.id ?? fallback.accountId,
+        accountName: `${data.localizedFirstName ?? ''} ${data.localizedLastName ?? ''}`.trim() || fallback.accountName,
+      }
+    }
+    if (platform === 'facebook') {
+      const res = await fetch(`https://graph.facebook.com/me?fields=id,name&access_token=${accessToken}`)
+      if (!res.ok) return fallback
+      const data = await res.json() as { id?: string; name?: string }
+      return { accountId: data.id ?? fallback.accountId, accountName: data.name ?? fallback.accountName }
+    }
+    if (platform === 'instagram') {
+      const res = await fetch(`https://graph.instagram.com/me?fields=id,username&access_token=${accessToken}`)
+      if (!res.ok) return fallback
+      const data = await res.json() as { id?: string; username?: string }
+      return { accountId: data.id ?? fallback.accountId, accountName: data.username ?? fallback.accountName }
+    }
+    if (platform === 'youtube') {
+      const res = await fetch('https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      if (!res.ok) return fallback
+      const data = await res.json() as { items?: Array<{ id: string; snippet?: { title?: string } }> }
+      const item = data.items?.[0]
+      return { accountId: item?.id ?? fallback.accountId, accountName: item?.snippet?.title ?? fallback.accountName }
+    }
+    if (platform === 'tiktok') {
+      const res = await fetch(`https://open-api.tiktok.com/user/info/?fields=open_id,display_name&access_token=${accessToken}`)
+      if (!res.ok) return fallback
+      const data = await res.json() as { data?: { user?: { open_id: string; display_name: string } } }
+      return {
+        accountId: data.data?.user?.open_id ?? fallback.accountId,
+        accountName: data.data?.user?.display_name ?? fallback.accountName,
+      }
+    }
+  } catch (err) {
+    console.error(`[oauth-connect] failed to fetch ${platform} account info:`, err)
+  }
+  return fallback
+}
+
 // Platform OAuth configuration
 const PLATFORM_CONFIG: Record<string, {
   authUrl: string
@@ -147,12 +205,19 @@ serve(async (req: Request) => {
         expires_in?: number
       }
 
+      // Fetch real platform account information using the access token.
+      const accountInfo = await fetchPlatformAccountInfo(stateData.platform, tokens.access_token)
+      const expiresAt = tokens.expires_in
+        ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+        : null
+
       // Store tokens in Supabase Vault
       const secretName = `oauth_${stateData.platform}_${stateData.user_id}_${Date.now()}`
       const { data: vaultData, error: vaultError } = await supabase.rpc('vault.create_secret', {
         secret: JSON.stringify({
           access_token:  tokens.access_token,
           refresh_token: tokens.refresh_token ?? null,
+          expires_at:    expiresAt,
         }),
         name: secretName,
       })
@@ -162,15 +227,22 @@ serve(async (req: Request) => {
         return Response.redirect(`${stateData.redirect_uri}?error=vault_error`, 302)
       }
 
-      // Insert social_connections row
+      const vaultSecretId = (vaultData as { id: string } | null)?.id ?? null
+      if (!vaultSecretId) {
+        console.error('Vault did not return a secret id')
+        return Response.redirect(`${stateData.redirect_uri}?error=vault_error`, 302)
+      }
+
+      // Insert social_connections row with the real platform account id.
       const { error: insertError } = await supabase.from('social_connections').upsert({
         user_id:             stateData.user_id,
         team_id:             stateData.team_id,
         platform:            stateData.platform,
-        platform_account_id: stateData.user_id, // Will be updated with real account ID
-        account_name:        stateData.platform,
+        platform_account_id: accountInfo.accountId,
+        account_name:        accountInfo.accountName,
         is_active:           true,
-        vault_secret_id:     (vaultData as { id: string } | null)?.id ?? null,
+        vault_secret_id:     vaultSecretId,
+        token_expires_at:    expiresAt,
       }, { onConflict: 'team_id,platform,platform_account_id' })
 
       if (insertError) {

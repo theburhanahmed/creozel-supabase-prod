@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react'
 import { toast } from 'sonner'
-import { UploadIcon, TrashIcon, ImageIcon, VideoIcon, MicIcon, FileIcon, SearchIcon, FilterIcon } from 'lucide-react'
+import { UploadIcon, TrashIcon, ImageIcon, VideoIcon, MicIcon, FileIcon, SearchIcon } from 'lucide-react'
 import { useAppContext } from '../context/AppContext'
 import { getMediaItems, uploadMediaItem, deleteMediaItem } from '../services/mediaService'
 import type { MediaItem, MediaType } from '../types'

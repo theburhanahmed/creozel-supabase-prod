@@ -1,7 +1,6 @@
 import {
   ContentCategory,
   ContentFormat,
-  ContentFormatRegistryEntry,
   ContentFormatRegistry,
   StudioPlatform,
   StudioTone,

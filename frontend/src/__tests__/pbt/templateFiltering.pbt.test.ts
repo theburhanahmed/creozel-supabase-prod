@@ -108,7 +108,7 @@ const studioTemplateArb: fc.Arbitrary<StudioTemplate> = fc.record<StudioTemplate
   } satisfies ContentFormatMetadataSchema['advancedOptions']),
   is_system: fc.boolean(),
   team_id: fc.option(fc.uuid(), { nil: null }),
-  created_at: fc.date().map((d) => d.toISOString()),
+  created_at: fc.integer({ min: Date.parse('2000-01-01T00:00:00.000Z'), max: Date.parse('2030-01-01T00:00:00.000Z') }).map((ts) => new Date(ts).toISOString()),
 })
 
 /** Generates an array of 0–20 StudioTemplate objects. */

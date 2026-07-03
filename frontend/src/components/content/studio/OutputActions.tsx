@@ -69,7 +69,7 @@ export const OutputActions: React.FC<OutputActionsProps & { onRegenerate: () => 
   job,
   textContent,
   isFetchingContent,
-  fetchError,
+  fetchError: _fetchError,
   onCopy,
   onPublish,
   onRegenerate,

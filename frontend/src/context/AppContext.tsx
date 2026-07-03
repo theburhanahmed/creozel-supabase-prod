@@ -10,6 +10,9 @@ import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
 import type { User, Team, TeamRole } from '../types'
 
+// Disable fast-refresh warning for context and helpers exported alongside the component.
+/* eslint-disable react-refresh/only-export-components */
+
 // ─── Team selection helpers ───────────────────────────────────────────────────
 
 const ROLE_PRIORITY: Record<TeamRole, number> = {
@@ -60,6 +63,7 @@ interface AppContextType {
   // Team / tenant state
   activeTeam: Team | null
   teams: Team[]
+  setTeams: (teams: Team[]) => void
   isTeamLoading: boolean
   isStaleDataError: boolean
   setActiveTeam: (team: Team | null) => void
@@ -301,6 +305,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         isAuthLoading,
         activeTeam,
         teams,
+        setTeams,
         isTeamLoading,
         isStaleDataError,
         setActiveTeam,

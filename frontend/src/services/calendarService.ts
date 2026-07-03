@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
-import type { ScheduledPost } from '../types'
+import type { ScheduledPost, SocialPlatform } from '../types'
 
 /**
  * Fetch all scheduled posts for the calendar view.
@@ -64,6 +64,45 @@ export async function reschedulePost(
     return data as ScheduledPost
   } catch (error: unknown) {
     reportError('calendarService.reschedulePost', error, { postId })
+    return null
+  }
+}
+
+/**
+ * Create a new scheduled post.
+ */
+export async function createScheduledPost(
+  userId: string,
+  teamId: string | null,
+  content: string,
+  platform: SocialPlatform,
+  scheduledAt: string,
+  mediaUrls: string[] = [],
+  socialConnectionId?: string,
+): Promise<ScheduledPost | null> {
+  try {
+    const { data, error } = await supabase
+      .from('scheduled_posts')
+      .insert({
+        user_id: userId,
+        team_id: teamId ?? null,
+        content,
+        platform,
+        scheduled_at: scheduledAt,
+        status: 'scheduled',
+        media_urls: mediaUrls,
+        social_connection_id: socialConnectionId ?? null,
+      })
+      .select()
+      .single()
+
+    if (error) {
+      reportError('calendarService.createScheduledPost', error, { userId, teamId })
+      return null
+    }
+    return data as ScheduledPost
+  } catch (error: unknown) {
+    reportError('calendarService.createScheduledPost', error, { userId, teamId })
     return null
   }
 }

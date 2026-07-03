@@ -3,6 +3,9 @@ import { CONTENT_FORMAT_REGISTRY } from '../../../constants/contentFormatRegistr
 import { FormatCard } from './FormatCard'
 import type { ContentFormat } from '../../../types'
 
+// Disable fast-refresh warning for the helper exported alongside the component.
+/* eslint-disable react-refresh/only-export-components */
+
 // ─── Repurposing Paths (Requirement 17.4) ─────────────────────────────────────
 // Explicit map of source format → valid target formats.
 // For source formats not listed here, no repurposing paths are available.

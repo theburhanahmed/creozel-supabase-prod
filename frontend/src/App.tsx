@@ -16,6 +16,8 @@ import { Register } from './pages/auth/Register'
 // ─── Lazy pages ───────────────────────────────────────────────────────────────
 const ForgotPassword     = lazy(() => import('./pages/auth/ForgotPassword').then((m) => ({ default: m.ForgotPassword })))
 const ResetPassword      = lazy(() => import('./pages/auth/ResetPassword').then((m) => ({ default: m.ResetPassword })))
+const ConfirmSent        = lazy(() => import('./pages/auth/ConfirmSent').then((m) => ({ default: m.ConfirmSent })))
+const AcceptInvitation   = lazy(() => import('./pages/auth/AcceptInvitation').then((m) => ({ default: m.AcceptInvitation })))
 const Onboarding         = lazy(() => import('./pages/onboarding/Onboarding').then((m) => ({ default: m.Onboarding })))
 const Dashboard          = lazy(() => import('./pages/Dashboard').then((m) => ({ default: m.Dashboard })))
 const ContentGenerationStudio = lazy(() =>
@@ -27,6 +29,7 @@ const Calendar           = lazy(() => import('./pages/Calendar').then((m) => ({ 
 const Analytics          = lazy(() => import('./pages/Analytics').then((m) => ({ default: m.Analytics })))
 const WorkflowDashboard  = lazy(() => import('./pages/workflow/WorkflowDashboard').then((m) => ({ default: m.WorkflowDashboard })))
 const AutopilotDashboard = lazy(() => import('./pages/autopilot/AutopilotDashboard').then((m) => ({ default: m.AutopilotDashboard })))
+const PipelineBuilder    = lazy(() => import('./pages/autopilot/PipelineBuilder').then((m) => ({ default: m.PipelineBuilder })))
 const Settings           = lazy(() => import('./pages/Settings').then((m) => ({ default: m.Settings })))
 const Team               = lazy(() => import('./pages/Team').then((m) => ({ default: m.Team })))
 const AffiliatePage      = lazy(() => import('./pages/affiliate/AffiliatePage').then((m) => ({ default: m.AffiliatePage })))
@@ -70,6 +73,8 @@ function AppShell() {
           <Route path="/auth/register"        element={<Register />} />
           <Route path="/auth/forgot-password" element={<Suspense fallback={<PageLoader />}><ForgotPassword /></Suspense>} />
           <Route path="/auth/reset-password"  element={<Suspense fallback={<PageLoader />}><ResetPassword /></Suspense>} />
+          <Route path="/auth/confirm-sent"    element={<Suspense fallback={<PageLoader />}><ConfirmSent /></Suspense>} />
+          <Route path="/auth/accept-invitation" element={<Suspense fallback={<PageLoader />}><AcceptInvitation /></Suspense>} />
 
           {/* Protected */}
           <Route
@@ -96,6 +101,7 @@ function AppShell() {
                             <Route path="/profile"                 element={<UserProfile />} />
                             <Route path="/notifications"           element={<Notifications />} />
                             <Route path="/content/*"               element={<ContentGenerationStudio />} />
+                            <Route path="/autopilot/builder/:pipelineId?" element={<PipelineBuilder />} />
                             <Route path="/autopilot/*"             element={<AutopilotDashboard />} />
                             <Route path="/workflow"                element={<WorkflowDashboard />} />
                             <Route path="/analytics/*"             element={<Analytics />} />

@@ -8,6 +8,7 @@ import {
   pausePipeline, resumePipeline, deletePipeline,
   type PipelineStats,
 } from '../../services/workflowService'
+import { useAppContext } from '../../context/AppContext'
 import type { PipelineExecution } from '../../types'
 
 const Skeleton: React.FC<{ className?: string }> = ({ className = '' }) => (
@@ -22,6 +23,8 @@ const STATUS_CONFIG: Record<string, { icon: React.ReactNode; color: string }> = 
 }
 
 export const WorkflowDashboard: React.FC = () => {
+  const { activeTeam } = useAppContext()
+  const teamId = activeTeam?.id
   const [stats, setStats]           = useState<PipelineStats | null>(null)
   const [executions, setExecutions] = useState<PipelineExecution[]>([])
   const [loading, setLoading]       = useState(true)
@@ -30,11 +33,11 @@ export const WorkflowDashboard: React.FC = () => {
 
   const load = useCallback(async () => {
     setLoading(true)
-    const [s, e] = await Promise.all([getPipelineStats(), getRecentExecutions()])
+    const [s, e] = await Promise.all([getPipelineStats(teamId), getRecentExecutions(teamId)])
     setStats(s)
     setExecutions(e)
     setLoading(false)
-  }, [])
+  }, [teamId])
 
   useEffect(() => { void load() }, [load])
 
@@ -155,7 +158,7 @@ export const WorkflowDashboard: React.FC = () => {
                       <button
                         aria-label="Pause pipeline"
                         disabled={isInFlight}
-                        onClick={() => void runAction(exec.id, () => pausePipeline(exec.id))}
+                        onClick={() => void runAction(exec.id, () => teamId ? pausePipeline(exec.id, teamId) : Promise.resolve(false))}
                         className="p-1.5 rounded-lg text-yellow-500 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 disabled:opacity-40 transition-colors"
                       >
                         <PauseIcon size={14} />
@@ -165,7 +168,7 @@ export const WorkflowDashboard: React.FC = () => {
                       <button
                         aria-label="Resume pipeline"
                         disabled={isInFlight}
-                        onClick={() => void runAction(exec.id, () => resumePipeline(exec.id))}
+                        onClick={() => void runAction(exec.id, () => teamId ? resumePipeline(exec.id, teamId) : Promise.resolve(false))}
                         className="p-1.5 rounded-lg text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 disabled:opacity-40 transition-colors"
                       >
                         <PlayIcon size={14} />
@@ -174,7 +177,7 @@ export const WorkflowDashboard: React.FC = () => {
                     <button
                       aria-label="Delete pipeline"
                       disabled={isInFlight}
-                      onClick={() => void runAction(exec.id, () => deletePipeline(exec.id))}
+                      onClick={() => void runAction(exec.id, () => teamId ? deletePipeline(exec.id, teamId) : Promise.resolve(false))}
                       className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-40 transition-colors"
                     >
                       <Trash2Icon size={14} />

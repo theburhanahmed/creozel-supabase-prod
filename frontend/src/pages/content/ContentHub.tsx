@@ -14,7 +14,7 @@ import {
   RefreshCwIcon,
 } from 'lucide-react'
 import { StatusBadge } from '../../components/content/StatusBadge'
-import { ResultViewer } from '../../components/content/ResultViewer'
+import { TextResultViewer } from '../../components/content/ResultViewer'
 import { useAppContext } from '../../context/AppContext'
 import {
   createContentJob,
@@ -271,54 +271,12 @@ export const ContentHub: React.FC = () => {
       }
     })
     return unsubscribe
-  }, [activeJob?.id, activeJob?.status, user])
+  }, [activeJob, user])
 
   // ─── Task 13.2 — Credit cost for selected type ───────────────────────────────
   const creditCost = pricing.find((p) => p.content_type === selectedType)?.credits_cost ?? 0
 
-  // ─── Task 14.1 — Build metadata from advanced options ────────────────────────
-  const buildMetadata = useCallback((): Record<string, unknown> => {
-    switch (selectedType) {
-      case 'text':
-        return {
-          model:          textOptions.model,
-          tone:           textOptions.tone,
-          output_format:  textOptions.outputFormat,
-          word_count_min: textOptions.wordCountMin,
-          word_count_max: textOptions.wordCountMax,
-          language:       textOptions.language,
-          brand_voice:    textOptions.brandVoiceEnabled
-            ? 'Use the brand voice guidelines from the team profile.'
-            : null,
-        }
-      case 'image':
-        return {
-          provider:        imageOptions.provider,
-          resolution:      imageOptions.resolution,
-          style:           imageOptions.style,
-          negative_prompt: imageOptions.negativePrompt,
-          num_images:      imageOptions.numImages,
-          seed:            imageOptions.seed,
-        }
-      case 'video':
-        return {
-          model:          videoOptions.model,
-          duration:       videoOptions.duration,
-          aspect_ratio:   videoOptions.aspectRatio,
-          mode:           videoOptions.mode,
-          generate_audio: videoOptions.generateAudio,
-        }
-      case 'audio':
-        return {
-          provider:          audioOptions.provider,
-          voice_id:          audioOptions.voiceId,
-          speaking_rate:     audioOptions.speakingRate,
-          pitch_adjustment:  audioOptions.pitchAdjustment,
-          output_format:     audioOptions.outputFormat,
-          stability_clarity: audioOptions.stabilityClarity,
-        }
-    }
-  }, [selectedType, textOptions, imageOptions, videoOptions, audioOptions])
+  // ─── Task 14.1 — Build metadata from advanced options (currently unused) ───────
 
   const handleGenerate = useCallback(async () => {
     if (!user || !prompt.trim()) return
@@ -340,7 +298,7 @@ export const ContentHub: React.FC = () => {
       setIsGenerating(false)
       toast.error(err instanceof Error ? err.message : 'Failed to start generation')
     }
-  }, [user, prompt, selectedType, tone, useBrandVoice, isGenerating, activeTeam, buildMetadata])
+  }, [user, prompt, selectedType, tone, useBrandVoice, isGenerating, activeTeam])
 
   const handleCancel = useCallback(async () => {
     if (!activeJob || !user) return
@@ -1116,7 +1074,7 @@ export const ContentHub: React.FC = () => {
                   </div>
                 </div>
               ) : (
-                <ResultViewer job={activeJob} />
+                <TextResultViewer job={activeJob} />
               )}
             </div>
           )}

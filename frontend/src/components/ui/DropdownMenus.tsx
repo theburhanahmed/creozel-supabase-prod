@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { UserIcon, SettingsIcon, LogOutIcon, ExternalLinkIcon, PlusIcon, DollarSignIcon } from 'lucide-react'
+import { UserIcon, SettingsIcon, LogOutIcon, ExternalLinkIcon } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useAppContext } from '../../context/AppContext'
 import { authService } from '../../services/authService'

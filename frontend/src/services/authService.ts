@@ -12,6 +12,11 @@ export interface RegisterData {
   name: string
 }
 
+export interface RegisterResult {
+  user: User
+  requiresEmailConfirmation: boolean
+}
+
 /**
  * Auth service — all operations go through Supabase GoTrue (self-hosted).
  * No mock data, no localStorage hacks. Session is managed by the Supabase client.
@@ -34,17 +39,31 @@ export const authService = {
    * Register a new account via GoTrue.
    * Email confirmation is required unless ENABLE_EMAIL_AUTOCONFIRM=true in .env.
    */
-  async register(data: RegisterData): Promise<User> {
-    const { data: authData, error } = await supabase.auth.signUp({
-      email: data.email,
-      password: data.password,
-      options: {
-        data: { name: data.name },
-      },
+  async register(data: RegisterData): Promise<RegisterResult> {
+    const { data: result, error } = await supabase.functions.invoke('register', {
+      body: data,
     })
     if (error) throw new Error(error.message)
-    if (!authData.user) throw new Error('Registration failed: no user returned')
-    return mapSupabaseUser(authData.user)
+    const response = result as
+      | { error: string; user?: undefined; requiresEmailConfirmation?: undefined }
+      | { error?: undefined; user: typeof result.user; requiresEmailConfirmation: boolean }
+    if (response.error) throw new Error(response.error)
+    if (!response.user) throw new Error('Registration failed: no user returned')
+
+    const user = await mapSupabaseUser(response.user)
+
+    if (response.requiresEmailConfirmation) {
+      return { user, requiresEmailConfirmation: true }
+    }
+
+    // When email auto-confirmation is enabled, establish a session for the new user.
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: data.email,
+      password: data.password,
+    })
+    if (signInError) throw new Error(signInError.message)
+
+    return { user, requiresEmailConfirmation: false }
   },
 
   /**
@@ -61,7 +80,7 @@ export const authService = {
    */
   async getCurrentUser(): Promise<User | null> {
     const { data } = await supabase.auth.getUser()
-    if (!data.user) return null
+    if (!data.user || !isEmailConfirmed(data.user)) return null
     return mapSupabaseUser(data.user)
   },
 
@@ -72,7 +91,7 @@ export const authService = {
     callback: (user: User | null) => void,
   ): { unsubscribe: () => void } {
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
+      if (session?.user && isEmailConfirmed(session.user)) {
         void mapSupabaseUser(session.user).then(callback)
       } else {
         callback(null)
@@ -98,6 +117,16 @@ export const authService = {
     const { error } = await supabase.auth.updateUser({ password: newPassword })
     if (error) throw new Error(error.message)
   },
+}
+
+/**
+ * Returns true if the user has confirmed their email address.
+ * Supabase exposes `email_confirmed_at` (or the legacy `confirmed_at` field).
+ */
+function isEmailConfirmed(
+  user: { email_confirmed_at?: string; confirmed_at?: string },
+): boolean {
+  return !!(user.email_confirmed_at || user.confirmed_at)
 }
 
 /**

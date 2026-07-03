@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { SearchIcon, FileTextIcon, ImageIcon, VideoIcon, MicIcon, RocketIcon, BarChart2Icon, CalendarIcon, SettingsIcon, HomeIcon, ArrowRightIcon } from 'lucide-react'
+import { SearchIcon, FileTextIcon, ImageIcon, VideoIcon, MicIcon, RocketIcon, BarChart2Icon, CalendarIcon, SettingsIcon, HomeIcon, ArrowRightIcon, WorkflowIcon } from 'lucide-react'
 import { cn } from '../../lib/utils'
+
+// Disable fast-refresh warning for the hook exported alongside the component.
+/* eslint-disable react-refresh/only-export-components */
 
 interface CommandItem {
   id: string; title: string; description?: string; icon: React.ReactNode
@@ -20,6 +23,7 @@ export const CommandPalette: React.FC<CommandPaletteProps> = ({ isOpen, onClose 
   const commands: CommandItem[] = useMemo(() => [
     { id: 'home', title: 'Home', description: 'Go to dashboard', icon: <HomeIcon size={18} />, action: () => navigate('/'), category: 'navigation', keywords: ['dashboard'] },
     { id: 'autopilot', title: 'Autopilot', description: 'Content automation', icon: <RocketIcon size={18} />, action: () => navigate('/autopilot'), category: 'navigation', keywords: ['pipeline', 'automation'] },
+    { id: 'pipeline-builder', title: 'Pipeline Builder', description: 'Create an n8n workflow', icon: <WorkflowIcon size={18} />, action: () => navigate('/autopilot/builder'), category: 'navigation', keywords: ['n8n', 'automation', 'workflow'] },
     { id: 'analytics', title: 'Analytics', description: 'Performance metrics', icon: <BarChart2Icon size={18} />, action: () => navigate('/analytics'), category: 'navigation', keywords: ['stats', 'metrics'] },
     { id: 'calendar', title: 'Calendar', description: 'Schedule content', icon: <CalendarIcon size={18} />, action: () => navigate('/calendar'), category: 'navigation', keywords: ['schedule', 'posts'] },
     { id: 'settings', title: 'Settings', description: 'App preferences', icon: <SettingsIcon size={18} />, action: () => navigate('/settings'), category: 'navigation' },

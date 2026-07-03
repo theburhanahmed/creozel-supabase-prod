@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react'
+import React, { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
@@ -10,7 +10,7 @@ import {
   AlertCircleIcon,
 } from 'lucide-react'
 import { authService } from '../../services/authService'
-import { debounce } from '../../lib/utils'
+import { isValidEmail } from '../../lib/utils'
 
 export const LoginForm: React.FC = () => {
   const navigate = useNavigate()
@@ -22,31 +22,27 @@ export const LoginForm: React.FC = () => {
   const [emailFocused, setEmailFocused] = useState(false)
   const [passwordFocused, setPasswordFocused] = useState(false)
 
-  // Debounced submit — 1 s as per PRD §6.1
-  const handleLoginDebounced = useRef(
-    debounce((...args: unknown[]) => {
-      const emailVal    = args[0] as string
-      const passwordVal = args[1] as string
-      setError('')
-      authService
-        .login({ email: emailVal, password: passwordVal })
-        .then(() => {
-          // Auth state is updated exclusively via onAuthStateChange in AppContext
-          toast.success('Welcome back!')
-          navigate('/', { replace: true })
-        })
-        .catch((err: unknown) => {
-          setError(err instanceof Error ? err.message : 'Login failed')
-        })
-        .finally(() => setLoading(false))
-    }, 1000),
-  ).current
-
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (loading) return
+
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
+      return
+    }
+
     setLoading(true)
-    handleLoginDebounced(email, password)
+    setError('')
+    try {
+      await authService.login({ email, password })
+      // Auth state is updated exclusively via onAuthStateChange in AppContext
+      toast.success('Welcome back!')
+      navigate('/', { replace: true })
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Login failed')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (

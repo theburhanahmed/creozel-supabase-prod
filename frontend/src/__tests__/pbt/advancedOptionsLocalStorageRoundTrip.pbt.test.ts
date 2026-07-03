@@ -107,10 +107,18 @@ const imageOptionsArb = fc.record<ImageAdvancedOptions>({
 })
 
 const videoOptionsArb = fc.record<VideoAdvancedOptions>({
-  model: fc.constantFrom('gpt-4', 'gpt-3.5'),
+  model: fc.constantFrom(
+    'klingai/kling-v2.6-t2v',
+    'klingai/kling-v3.0-t2v',
+    'alibaba/wan-v2.6-t2v',
+    'google/veo-3.1-generate-001',
+  ),
+  duration: fc.constantFrom(5, 8, 10, 15),
+  aspectRatio: fc.constantFrom('16:9', '9:16', '1:1'),
+  mode: fc.constantFrom('std', 'pro'),
+  generateAudio: fc.boolean(),
   sceneCount: fc.integer({ min: 1, max: 10 }),
   durationPerScene: fc.constantFrom(15, 30, 60),
-  aspectRatio: fc.constantFrom('16:9', '9:16', '1:1'),
   includeBRoll: fc.boolean(),
   brandVoiceEnabled: fc.boolean(),
 })

@@ -344,55 +344,19 @@ serve(async (req: Request) => {
 
       const webhookEventId = webhookEventRow.id
 
-      // Step (b+c): UPDATE wallets.balance atomically
-      // Fetch current balance then write back balance + credits in a single UPDATE.
-      // This is safe because the idempotency check above prevents duplicate processing.
-      const { data: walletRow, error: walletFetchError } = await supabase
-        .from('wallets')
-        .select('id, balance')
-        .eq('id', walletId)
-        .single()
+      // Step (b+c): Add credits atomically and record the transaction.
+      const { error: addCreditsError } = await supabase.rpc('add_credits', {
+        p_wallet_id:      walletId,
+        p_amount:         credits,
+        p_reference_id:   webhookEventId,
+        p_description:    'Dodo Payments credit purchase',
+        p_type:           'purchase',
+      })
 
-      if (walletFetchError || !walletRow) {
-        console.error('[dodo-webhook] Failed to fetch wallet for payment.succeeded:', walletFetchError?.message)
+      if (addCreditsError) {
+        console.error('[dodo-webhook] Failed to add credits for payment.succeeded:', addCreditsError.message)
         // Clean up the webhook_events row we just inserted
         await supabase.from('webhook_events').delete().eq('id', webhookEventId)
-        return new Response(
-          JSON.stringify({ error: 'db_error' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-
-      const { error: walletUpdateError } = await supabase
-        .from('wallets')
-        .update({ balance: walletRow.balance + credits })
-        .eq('id', walletId)
-
-      if (walletUpdateError) {
-        console.error('[dodo-webhook] Failed to update wallet balance:', walletUpdateError.message)
-        // Clean up the webhook_events row we just inserted
-        await supabase.from('webhook_events').delete().eq('id', webhookEventId)
-        return new Response(
-          JSON.stringify({ error: 'db_error' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-
-      // Step (d): INSERT credit_transactions
-      const { error: txError } = await supabase
-        .from('credit_transactions')
-        .insert({
-          wallet_id:        walletId,
-          type:             'purchase',
-          amount:           credits,
-          description:      'Dodo Payments credit purchase',
-          reference_id:     paymentId,
-          dodo_payment_id:  paymentId,
-          dodo_product_id:  productId,
-        })
-
-      if (txError) {
-        console.error('[dodo-webhook] Failed to insert credit_transactions:', txError.message)
         return new Response(
           JSON.stringify({ error: 'db_error' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
@@ -479,51 +443,16 @@ serve(async (req: Request) => {
       const refundCredits = originalTx.amount  // positive number of credits to refund
       const walletId      = originalTx.wallet_id
 
-      // Step (c): Decrement wallets.balance with floor of 0
-      // Fetch current balance first
-      const { data: wallet, error: walletFetchError } = await supabase
-        .from('wallets')
-        .select('id, balance')
-        .eq('id', walletId)
-        .single()
+      // Step (c): Refund credits atomically (decrement balance with floor 0)
+      const { error: refundError } = await supabase.rpc('refund_credits', {
+        p_wallet_id:     walletId,
+        p_amount:        refundCredits,
+        p_reference_id:  webhookId || null,
+        p_description:   'Dodo Payments refund',
+      })
 
-      if (walletFetchError || !wallet) {
-        console.error('[dodo-webhook] Failed to fetch wallet for refund:', walletFetchError?.message)
-        return new Response(
-          JSON.stringify({ error: 'db_error' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-
-      const newBalance = Math.max(0, wallet.balance - refundCredits)
-
-      const { error: walletUpdateError } = await supabase
-        .from('wallets')
-        .update({ balance: newBalance })
-        .eq('id', walletId)
-
-      if (walletUpdateError) {
-        console.error('[dodo-webhook] Failed to update wallet balance for refund:', walletUpdateError.message)
-        return new Response(
-          JSON.stringify({ error: 'db_error' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-        )
-      }
-
-      // Step (d): INSERT credit_transactions (type='refund', amount=-credits)
-      const { error: refundTxError } = await supabase
-        .from('credit_transactions')
-        .insert({
-          wallet_id:       walletId,
-          type:            'refund',
-          amount:          -refundCredits,
-          description:     'Dodo Payments refund',
-          reference_id:    refund_id,
-          dodo_payment_id: payment_id,
-        })
-
-      if (refundTxError) {
-        console.error('[dodo-webhook] Failed to insert refund credit_transaction:', refundTxError.message)
+      if (refundError) {
+        console.error('[dodo-webhook] Failed to refund credits:', refundError.message)
         return new Response(
           JSON.stringify({ error: 'db_error' }),
           { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },

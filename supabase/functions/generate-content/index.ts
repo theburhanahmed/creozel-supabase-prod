@@ -135,6 +135,213 @@ serve(async (req: Request) => {
 
   const supabase = createClient(supabaseUrl, serviceKey)
 
+  // ── Auth helper: validate the caller owns the job or belongs to its team ───
+  async function getAuthenticatedUser(): Promise<{ id: string } | null> {
+    const authHeader = req.headers.get('Authorization')
+    if (!authHeader) return null
+    try {
+      const userClient = createClient(supabaseUrl, serviceKey, {
+        global: { headers: { Authorization: authHeader } },
+        auth: { autoRefreshToken: false, persistSession: false },
+      })
+      const { data, error } = await userClient.auth.getUser()
+      if (error || !data.user) return null
+      return { id: data.user.id }
+    } catch (err) {
+      console.error('[generate-content] auth validation error:', err)
+      return null
+    }
+  }
+
+  async function canAccessJob(userId: string, jobUserId: string, teamId: string | null): Promise<boolean> {
+    if (userId === jobUserId) return true
+    if (!teamId) return false
+    const { data } = await supabase
+      .from('team_members')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('user_id', userId)
+      .limit(1)
+      .maybeSingle()
+    return data !== null
+  }
+
+  // ── Wallet helper: tenant-level billing boundary ────────────────────────────
+  // Returns the wallet for the active scope. Team wallets are created on demand.
+  async function getScopedWallet(userId: string, teamId: string | null): Promise<{ id: string; balance: number; reserved: number } | null> {
+    try {
+      let wallet: { id: string; balance: number; reserved: number } | null = null
+      if (teamId) {
+        const { data: walletId } = await supabase.rpc('get_or_create_team_wallet', { p_team_id: teamId }).single()
+        if (walletId) {
+          const { data } = await supabase
+            .from('wallets')
+            .select('id, balance, reserved')
+            .eq('id', walletId as string)
+            .single()
+          wallet = data as typeof wallet
+        }
+      } else {
+        const { data } = await supabase
+          .from('wallets')
+          .select('id, balance, reserved')
+          .eq('user_id', userId)
+          .is('team_id', null)
+          .maybeSingle()
+        wallet = data as typeof wallet
+      }
+      return wallet
+    } catch (err) {
+      console.error('[generate-content] getScopedWallet error:', err)
+      return null
+    }
+  }
+
+  // ── Upload a Blob to Storage and return its public URL ───────────────────────
+  async function uploadAsset(bucket: string, path: string, blob: Blob, contentType: string): Promise<string | null> {
+    const { error } = await supabase.storage.from(bucket).upload(path, blob, { contentType, upsert: true })
+    if (error) {
+      console.error('[generate-content] upload error:', error)
+      return null
+    }
+    const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+    return data.publicUrl
+  }
+
+  // ── Full video generation: script + scene images + TTS + manifest ─────────
+  // Produces a video storyboard as a JSON manifest. MP4 final assembly is handled
+  // by a downstream pipeline step or external encoder (e.g., FFmpeg/Replicate).
+  async function generateVideoAssets(
+    job: Record<string, unknown>,
+    metadata: Record<string, unknown>,
+    sourceContent: string | null,
+  ): Promise<{ resultUrl: string | null; resultText: string | null; videoMetadata: Record<string, unknown> }> {
+    if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
+    if (!elevenKey) throw new Error('ELEVENLABS_API_KEY not configured')
+
+    const rawModel = (metadata.model as string) ?? 'gpt-4o'
+    const MODEL_MAP: Record<string, string> = { 'gpt-3.5': 'gpt-3.5-turbo', 'gpt-4': 'gpt-4', 'gpt-4o': 'gpt-4o', 'gpt-4o-mini': 'gpt-4o-mini', 'gpt-3.5-turbo': 'gpt-3.5-turbo' }
+    const model = MODEL_MAP[rawModel] ?? 'gpt-4o'
+    const tone = (metadata.tone as string) ?? 'professional'
+    const language = (metadata.language as string) ?? 'en'
+    const brandVoice = (metadata.brand_voice as string | null) ?? null
+
+    const { data: brandProfile } = await supabase
+      .from('brand_profiles')
+      .select('voice_guidelines')
+      .eq('user_id', job.user_id as string)
+      .maybeSingle()
+
+    const voiceGuidelines = brandVoice ?? (brandProfile as { voice_guidelines?: string | null } | null)?.voice_guidelines ?? null
+
+    const systemPrompt = voiceGuidelines
+      ? `You are a video scriptwriter. Brand voice: ${voiceGuidelines}. Tone: ${tone}. Language: ${language}. Write a short video script with scene descriptions that can be turned into images.`
+      : `You are a professional video scriptwriter. Tone: ${tone}. Language: ${language}. Write a short video script with scene descriptions that can be turned into images.`
+
+    const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: sourceContent ? `${job.prompt}\n\nSource content to repurpose:\n${sourceContent}` : job.prompt },
+        ],
+        max_tokens: 2000,
+      }),
+    })
+
+    if (!openaiRes.ok) {
+      const err = await openaiRes.text()
+      throw new Error(`OpenAI error: ${err}`)
+    }
+
+    const openaiData = await openaiRes.json() as { choices: Array<{ message: { content: string } }> }
+    const script = openaiData.choices[0]?.message?.content ?? ''
+
+    // Extract 3 scene descriptions from the script (simple heuristic)
+    const sceneDescriptions: string[] = []
+    const lines = script.split('\n').filter((l) => l.trim().length > 0)
+    for (let i = 0; i < lines.length && sceneDescriptions.length < 3; i++) {
+      const line = lines[i].trim()
+      if (line.length > 20 && !line.toLowerCase().startsWith('title:') && !line.toLowerCase().startsWith('scene')) {
+        sceneDescriptions.push(line)
+      }
+    }
+    if (sceneDescriptions.length === 0) sceneDescriptions.push(job.prompt as string)
+
+    // Generate images for each scene
+    const imageUrls: string[] = []
+    for (let i = 0; i < sceneDescriptions.length; i++) {
+      const dalleRes = await fetch('https://api.openai.com/v1/images/generations', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${openaiKey}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'dall-e-3',
+          prompt: `Cinematic scene, no text, no logos: ${sceneDescriptions[i]}`,
+          n: 1,
+          size: '1024x1024',
+          response_format: 'url',
+        }),
+      })
+
+      if (!dalleRes.ok) continue
+      const dalleData = await dalleRes.json() as { data: Array<{ url: string }> }
+      const imageUrl = dalleData.data[0]?.url
+      if (imageUrl) {
+        const imgBlob = await (await fetch(imageUrl)).blob()
+        const storageUrl = await uploadAsset('generated-content', `${job.user_id as string}/${job.id as string}_scene_${i + 1}.png`, imgBlob, 'image/png')
+        if (storageUrl) imageUrls.push(storageUrl)
+      }
+    }
+
+    // Generate TTS narration from the script
+    const voiceId = (metadata.voice_id as string) ?? '21m00Tcm4TlvDq8ikWAM'
+    const speakingRate = (metadata.speaking_rate as number) ?? 1.0
+    const stabilityClarity = (metadata.stability_clarity as number) ?? 50
+    const elevenRes = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+      method: 'POST',
+      headers: { 'xi-api-key': elevenKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: script,
+        model_id: 'eleven_monolingual_v1',
+        voice_settings: { stability: stabilityClarity / 100, similarity_boost: 0.75, speaking_rate: speakingRate },
+      }),
+    })
+
+    if (!elevenRes.ok) throw new Error(`ElevenLabs error: ${await elevenRes.text()}`)
+    const audioBlob = await elevenRes.blob()
+    const audioUrl = await uploadAsset('generated-content', `${job.user_id as string}/${job.id as string}_audio.mp3`, audioBlob, 'audio/mpeg')
+
+    // Build a manifest that describes the full video storyboard
+    const manifest = {
+      version: 1,
+      script,
+      scenes: imageUrls.map((url, idx) => ({ index: idx + 1, image_url: url, description: sceneDescriptions[idx] })),
+      audio_url: audioUrl,
+      assembled_video_url: null,
+      note: 'This is a video storyboard. To produce a final MP4, run the assembly step (FFmpeg/Replicate) or use the pipeline builder.',
+    }
+
+    const manifestBlob = new Blob([JSON.stringify(manifest, null, 2)], { type: 'application/json' })
+    const manifestUrl = await uploadAsset('generated-content', `${job.user_id as string}/${job.id as string}_video.json`, manifestBlob, 'application/json')
+
+    // Also upload the script for convenience
+    const scriptBlob = new Blob([script], { type: 'text/plain' })
+    const scriptUrl = await uploadAsset('generated-content', `${job.user_id as string}/${job.id as string}.txt`, scriptBlob, 'text/plain')
+
+    return {
+      resultUrl: manifestUrl ?? audioUrl,
+      resultText: script,
+      videoMetadata: {
+        video_manifest_url: manifestUrl,
+        video_script_url: scriptUrl,
+        video_audio_url: audioUrl,
+        video_scene_urls: imageUrls,
+      },
+    }
+  }
+
   // Hoist job_id so the catch block can reference it without re-parsing the body
   let job_id: string | null = null
 
@@ -163,6 +370,21 @@ serve(async (req: Request) => {
       )
     }
 
+    // Authorize the caller
+    const caller = await getAuthenticatedUser()
+    if (!caller) {
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+    if (!(await canAccessJob(caller.id, job.user_id as string, job.team_id as string | null))) {
+      return new Response(
+        JSON.stringify({ error: 'Forbidden' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      )
+    }
+
     // ── Metadata schema validation ────────────────────────────────────────────
     const metadata = (job.metadata as Record<string, unknown> | null) ?? {}
     const contentCategory = metadata.contentCategory
@@ -175,18 +397,12 @@ serve(async (req: Request) => {
         .update({ status: 'failed', error_message: validationError, updated_at: new Date().toISOString() })
         .eq('id', job_id)
 
-      const { data: failWallet } = await supabase
-        .from('wallets')
-        .select('id, reserved')
-        .eq('user_id', job.user_id)
-        .is('team_id', null)
-        .maybeSingle()
-
-      if (failWallet && job.credits_reserved) {
-        await supabase
-          .from('wallets')
-          .update({ reserved: Math.max(0, failWallet.reserved - job.credits_reserved) })
-          .eq('id', failWallet.id)
+      if (job.credits_reserved) {
+        await supabase.rpc('release_credits', {
+          p_user_id: job.user_id as string,
+          p_team_id: job.team_id as string | null,
+          p_amount:  job.credits_reserved as number,
+        })
       }
 
       return new Response(
@@ -206,18 +422,12 @@ serve(async (req: Request) => {
         .update({ status: 'failed', error_message: msg, updated_at: new Date().toISOString() })
         .eq('id', job_id!)
 
-      const { data: fw } = await supabase
-        .from('wallets')
-        .select('id, reserved')
-        .eq('user_id', job.user_id)
-        .is('team_id', null)
-        .maybeSingle()
-
-      if (fw && job.credits_reserved) {
-        await supabase
-          .from('wallets')
-          .update({ reserved: Math.max(0, fw.reserved - job.credits_reserved) })
-          .eq('id', fw.id)
+      if (job.credits_reserved) {
+        await supabase.rpc('release_credits', {
+          p_user_id: job.user_id as string,
+          p_team_id: job.team_id as string | null,
+          p_amount:  job.credits_reserved as number,
+        })
       }
 
       return new Response(
@@ -282,7 +492,7 @@ serve(async (req: Request) => {
     // ── Route to AI provider ──────────────────────────────────────────────────
     if (schemaVersion === '0') {
       // Legacy routing: use job.type
-      if (job.type === 'text' || job.type === 'video') {
+      if (job.type === 'text') {
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
         const rawModel     = (job.metadata?.model as string) ?? 'gpt-4o'
@@ -310,7 +520,7 @@ serve(async (req: Request) => {
           ? `You are a content creator. Brand voice: ${voiceGuidelines}. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
           : `You are a professional content creator. Tone: ${tone}. Output format: ${outputFormat}. Language: ${language}.${repurposingContext}`
 
-        const maxTokens = job.type === 'video' ? 2000 : Math.ceil(wordCountMax * 1.5)
+        const maxTokens = Math.ceil(wordCountMax * 1.5)
 
         const openaiRes = await fetch('https://api.openai.com/v1/chat/completions', {
           method: 'POST',
@@ -342,6 +552,12 @@ serve(async (req: Request) => {
           const { data: urlData } = supabase.storage.from('generated-content').getPublicUrl(fileName)
           resultUrl = urlData.publicUrl
         }
+
+      } else if (job.type === 'video') {
+        const videoResult = await generateVideoAssets(job, metadata, sourceContent)
+        resultText = videoResult.resultText
+        resultUrl = videoResult.resultUrl
+        metadata.videoAssets = videoResult.videoMetadata
 
       } else if (job.type === 'image') {
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
@@ -483,6 +699,14 @@ serve(async (req: Request) => {
           resultUrl = urlData.publicUrl
         }
 
+        // For video formats, the text result is the script. Generate the full video assets next.
+        if (job.type === 'video' || contentCategory === 'video') {
+          const videoResult = await generateVideoAssets(job, metadata, sourceContent)
+          resultText = videoResult.resultText
+          resultUrl = videoResult.resultUrl
+          metadata.videoAssets = videoResult.videoMetadata
+        }
+
       } else if (formatConfig.provider === 'openai_image') {
         if (!openaiKey) throw new Error('OPENAI_API_KEY not configured')
 
@@ -560,19 +784,48 @@ serve(async (req: Request) => {
       }
     }
 
-    // ── Fetch credit cost ─────────────────────────────────────────────────────
+    // ── Fetch credit cost and unlimited entitlement ───────────────────────────
     const { data: pricing } = await supabase
       .from('pricing_config')
-      .select('credits_cost')
+      .select('credits_cost, unlimited_for_plans, is_unlimited_default')
       .eq('content_type', job.type)
       .eq('is_active', true)
       .maybeSingle()
 
-    const creditsUsed = pricing?.credits_cost ?? job.credits_reserved
+    let creditsUsed = pricing?.credits_cost ?? job.credits_reserved
+    let isUnlimited = pricing?.is_unlimited_default === true
+
+    if (!isUnlimited && pricing?.unlimited_for_plans && (pricing.unlimited_for_plans as string[]).length > 0) {
+      let subscriptionQuery = supabase
+        .from('subscriptions')
+        .select('plan')
+        .eq('user_id', job.user_id)
+        .eq('status', 'active')
+
+      if (job.team_id) {
+        subscriptionQuery = subscriptionQuery.eq('team_id', job.team_id as string)
+      } else {
+        subscriptionQuery = subscriptionQuery.is('team_id', null)
+      }
+
+      const { data: subscription } = await subscriptionQuery
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      const plan = (subscription as { plan?: string } | null)?.plan ?? 'free'
+      if ((pricing.unlimited_for_plans as string[]).includes(plan)) {
+        isUnlimited = true
+      }
+    }
+
+    if (isUnlimited) {
+      creditsUsed = 0
+    }
 
     // ── Save to media_items ───────────────────────────────────────────────────
     if (resultUrl) {
-      const mediaType = job.type === 'text' || job.type === 'video' ? 'document' : job.type
+      const mediaType = job.type === 'text' ? 'document' : job.type
       await supabase.from('media_items').insert({
         user_id:      job.user_id,
         team_id:      job.team_id,
@@ -585,29 +838,21 @@ serve(async (req: Request) => {
       })
     }
 
-    // ── Deduct credits from wallet ────────────────────────────────────────────
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('id, balance, reserved')
-      .eq('user_id', job.user_id)
-      .is('team_id', null)
-      .maybeSingle()
+    // ── Deduct credits from the scoped wallet atomically ──────────────────────
+    const { data: walletId } = await supabase
+      .rpc('get_wallet_for_scope', {
+        p_user_id: job.user_id as string,
+        p_team_id: job.team_id as string | null,
+      })
+      .single<string>()
 
-    if (wallet) {
-      await supabase
-        .from('wallets')
-        .update({
-          balance:  Math.max(0, wallet.balance - creditsUsed),
-          reserved: Math.max(0, wallet.reserved - job.credits_reserved),
-        })
-        .eq('id', wallet.id)
-
-      await supabase.from('credit_transactions').insert({
-        wallet_id:    wallet.id,
-        type:         'deduction',
-        amount:       -creditsUsed,
-        description:  `${job.type} generation`,
-        reference_id: job_id,
+    if (walletId) {
+      await supabase.rpc('deduct_credits', {
+        p_wallet_id:        walletId,
+        p_amount:           creditsUsed,
+        p_reserved_release: job.credits_reserved ?? 0,
+        p_job_id:           job_id,
+        p_description:      `${job.type} generation${isUnlimited ? ' (unlimited tier)' : ''}`,
       })
     }
 
@@ -636,31 +881,55 @@ serve(async (req: Request) => {
     // job_id is hoisted above — safe to use here without re-parsing the body
     if (job_id) {
       try {
+        const { data: jobRow } = await supabase
+          .from('content_jobs')
+          .select('credits_reserved, user_id, team_id, retry_count')
+          .eq('id', job_id)
+          .maybeSingle()
+
+        const MAX_RETRIES = 3
+        const isTransient =
+          message.includes('rate limit') ||
+          message.includes('timeout') ||
+          message.includes('fetch failed') ||
+          message.includes('NetworkError') ||
+          message.includes('503') ||
+          message.includes('502') ||
+          message.includes('429')
+        const retryCount = (jobRow?.retry_count ?? 0) as number
+
+        if (jobRow && isTransient && retryCount < MAX_RETRIES) {
+          const backoffMinutes = Math.pow(2, retryCount)
+          const retryAt = new Date(Date.now() + backoffMinutes * 60 * 1000).toISOString()
+          await supabase
+            .from('content_jobs')
+            .update({
+              status:         'pending',
+              error_message:  message,
+              retry_count:    retryCount + 1,
+              retry_at:       retryAt,
+              last_retry_at:  new Date().toISOString(),
+              updated_at:     new Date().toISOString(),
+            })
+            .eq('id', job_id)
+
+          return new Response(
+            JSON.stringify({ error: message, retry_at: retryAt }),
+            { status: 202, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+          )
+        }
+
         await supabase
           .from('content_jobs')
           .update({ status: 'failed', error_message: message, updated_at: new Date().toISOString() })
           .eq('id', job_id)
 
-        const { data: jobRow } = await supabase
-          .from('content_jobs')
-          .select('credits_reserved, user_id')
-          .eq('id', job_id)
-          .maybeSingle()
-
-        if (jobRow) {
-          const { data: failWallet } = await supabase
-            .from('wallets')
-            .select('id, reserved')
-            .eq('user_id', jobRow.user_id)
-            .is('team_id', null)
-            .maybeSingle()
-
-          if (failWallet) {
-            await supabase
-              .from('wallets')
-              .update({ reserved: Math.max(0, failWallet.reserved - (jobRow.credits_reserved ?? 0)) })
-              .eq('id', failWallet.id)
-          }
+        if (jobRow && jobRow.credits_reserved) {
+          await supabase.rpc('release_credits', {
+            p_user_id: jobRow.user_id as string,
+            p_team_id: jobRow.team_id as string | null,
+            p_amount:  jobRow.credits_reserved as number,
+          })
         }
       } catch (cleanupErr) {
         console.error('[generate-content] cleanup error:', cleanupErr)

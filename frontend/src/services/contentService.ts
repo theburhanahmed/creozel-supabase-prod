@@ -15,47 +15,55 @@ export interface CreateJobParams {
 /**
  * Insert a new content_jobs row, reserve credits, then invoke the Edge Function.
  * Returns the created job so the caller can subscribe to status changes.
+ *
+ * Billing is scoped to the active team when `teamId` is provided; otherwise the
+ * user's personal wallet is used.
  */
 export async function createContentJob(
   userId: string,
   params: CreateJobParams,
 ): Promise<ContentJob> {
+  const teamId = params.teamId ?? null
+
   // 1. Get credit cost for this content type
   const { data: pricing } = await supabase
     .from('pricing_config')
-    .select('credits_cost')
+    .select('credits_cost, unlimited_for_plans, is_unlimited_default')
     .eq('content_type', params.type)
     .eq('is_active', true)
     .maybeSingle()
 
-  const creditsToReserve = pricing?.credits_cost ?? 0
+  // 2. Determine if this content type is unlimited for the active scope.
+  //    For the frontend we do a conservative check: if the pricing row says
+  //    unlimited, we reserve 0 credits. The Edge Function re-verifies on its side.
+  const isUnlimited = pricing?.is_unlimited_default === true ||
+    (Array.isArray(pricing?.unlimited_for_plans) && (pricing?.unlimited_for_plans as string[]).length > 0)
+  const creditsToReserve = isUnlimited ? 0 : (pricing?.credits_cost ?? 0)
 
-  // 2. Check wallet balance
-  const { data: wallet } = await supabase
-    .from('wallets')
-    .select('id, balance, reserved')
-    .eq('user_id', userId)
-    .is('team_id', null)
-    .maybeSingle()
+  // 3. Reserve credits atomically for the active scope (skip when unlimited).
+  //    The reserve_credits RPC locks the wallet row and returns false on insufficient balance.
+  if (creditsToReserve > 0) {
+    const { data: reserved } = await supabase
+      .rpc('reserve_credits', {
+        p_user_id: userId,
+        p_team_id: teamId,
+        p_amount:  creditsToReserve,
+      })
+      .single<boolean>()
 
-  if (!wallet || wallet.balance < creditsToReserve) {
-    throw new Error(
-      `Insufficient credits. You need ${creditsToReserve} credits but have ${wallet?.balance ?? 0}.`,
-    )
+    if (reserved !== true) {
+      throw new Error(
+        `Insufficient credits. You need ${creditsToReserve} credits.`,
+      )
+    }
   }
-
-  // 3. Reserve credits
-  await supabase
-    .from('wallets')
-    .update({ reserved: wallet.reserved + creditsToReserve })
-    .eq('id', wallet.id)
 
   // 4. Insert job row
   const { data: job, error: insertError } = await supabase
     .from('content_jobs')
     .insert({
       user_id:          userId,
-      team_id:          params.teamId ?? null,
+      team_id:          teamId,
       type:             params.type,
       status:           'pending',
       prompt:           params.prompt,
@@ -73,14 +81,17 @@ export async function createContentJob(
 
   if (insertError || !job) {
     // Release reserved credits on failure
-    await supabase
-      .from('wallets')
-      .update({ reserved: wallet.reserved })
-      .eq('id', wallet.id)
+    if (creditsToReserve > 0) {
+      await supabase.rpc('release_credits', {
+        p_user_id: userId,
+        p_team_id: teamId,
+        p_amount:  creditsToReserve,
+      })
+    }
     throw new Error(insertError?.message ?? 'Failed to create content job')
   }
 
-  // 5. Invoke Edge Function (fire-and-forget — Realtime handles status updates)
+  // 6. Invoke Edge Function (fire-and-forget — Realtime handles status updates)
   supabase.functions
     .invoke('generate-content', { body: { job_id: job.id } })
     .catch((err: unknown) => {
@@ -121,12 +132,13 @@ export function subscribeToJob(
 
 /**
  * Cancel an in-progress job and release reserved credits.
+ * Credits are released on the same wallet that reserved them (team or personal).
  */
 export async function cancelJob(jobId: string, userId: string): Promise<void> {
   try {
     const { data: job } = await supabase
       .from('content_jobs')
-      .select('credits_reserved, status')
+      .select('credits_reserved, status, team_id')
       .eq('id', jobId)
       .single()
 
@@ -137,19 +149,13 @@ export async function cancelJob(jobId: string, userId: string): Promise<void> {
       .update({ status: 'cancelled', error_message: 'Cancelled by user' })
       .eq('id', jobId)
 
-    // Release reserved credits
-    const { data: wallet } = await supabase
-      .from('wallets')
-      .select('id, reserved')
-      .eq('user_id', userId)
-      .is('team_id', null)
-      .maybeSingle()
-
-    if (wallet) {
-      await supabase
-        .from('wallets')
-        .update({ reserved: Math.max(0, wallet.reserved - job.credits_reserved) })
-        .eq('id', wallet.id)
+    // Release reserved credits on the scoped wallet atomically
+    if ((job.credits_reserved ?? 0) > 0) {
+      await supabase.rpc('release_credits', {
+        p_user_id: userId,
+        p_team_id: job.team_id,
+        p_amount:  job.credits_reserved as number,
+      })
     }
   } catch (error: unknown) {
     reportError('contentService.cancelJob', error, { jobId })

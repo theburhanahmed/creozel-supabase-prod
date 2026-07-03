@@ -124,7 +124,7 @@ export const OutputPanel: React.FC<OutputPanelProps> = ({ activeJob, onRegenerat
       controller.abort()
       clearTimeout(timeoutId)
     }
-  }, [activeJob?.id, activeJob?.status, activeJob?.result_url, activeJob?.type])
+  }, [activeJob])
 
   // ── Derived flags ──────────────────────────────────────────────────────────
 

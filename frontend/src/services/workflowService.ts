@@ -55,12 +55,13 @@ export async function getRecentExecutions(teamId?: string, limit = 10): Promise<
   }
 }
 
-export async function pausePipeline(id: string): Promise<boolean> {
+export async function pausePipeline(id: string, teamId: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('pipeline_executions')
       .update({ status: 'pending' })
       .eq('id', id)
+      .eq('team_id', teamId)
     if (error) { reportError('workflowService.pausePipeline', error, { id }); return false }
     return true
   } catch (error: unknown) {
@@ -69,12 +70,13 @@ export async function pausePipeline(id: string): Promise<boolean> {
   }
 }
 
-export async function resumePipeline(id: string): Promise<boolean> {
+export async function resumePipeline(id: string, teamId: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('pipeline_executions')
       .update({ status: 'running' })
       .eq('id', id)
+      .eq('team_id', teamId)
     if (error) { reportError('workflowService.resumePipeline', error, { id }); return false }
     return true
   } catch (error: unknown) {
@@ -83,12 +85,13 @@ export async function resumePipeline(id: string): Promise<boolean> {
   }
 }
 
-export async function deletePipeline(id: string): Promise<boolean> {
+export async function deletePipeline(id: string, teamId: string): Promise<boolean> {
   try {
     const { error } = await supabase
       .from('pipeline_executions')
       .delete()
       .eq('id', id)
+      .eq('team_id', teamId)
     if (error) { reportError('workflowService.deletePipeline', error, { id }); return false }
     return true
   } catch (error: unknown) {

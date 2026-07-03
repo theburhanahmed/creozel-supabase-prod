@@ -2,13 +2,24 @@ import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
 import type { Wallet, CreditTransaction, DodoProduct } from '../types'
 
-export async function getWallet(userId: string): Promise<Wallet | null> {
+/**
+ * Fetch the wallet for the active scope.
+ * - If `teamId` is provided, returns the team wallet (creating it if missing).
+ * - Otherwise, returns the user's personal wallet (team_id IS NULL).
+ */
+export async function getWallet(userId: string, teamId?: string): Promise<Wallet | null> {
   try {
-    const { data, error } = await supabase.from('wallets').select('*').eq('user_id', userId).is('team_id', null).maybeSingle()
-    if (error) { reportError('creditsService.getWallet', error); return null }
+    let query = supabase.from('wallets').select('*').eq('user_id', userId)
+    if (teamId) {
+      query = query.eq('team_id', teamId)
+    } else {
+      query = query.is('team_id', null)
+    }
+    const { data, error } = await query.maybeSingle()
+    if (error) { reportError('creditsService.getWallet', error, { userId, teamId }); return null }
     return data as Wallet | null
   } catch (error: unknown) {
-    reportError('creditsService.getWallet', error)
+    reportError('creditsService.getWallet', error, { userId, teamId })
     return null
   }
 }
@@ -30,15 +41,15 @@ export async function getCreditPacks(): Promise<DodoProduct[]> {
   }
 }
 
-export async function getTransactions(userId: string, limit = 50): Promise<CreditTransaction[]> {
+export async function getTransactions(userId: string, limit = 50, teamId?: string): Promise<CreditTransaction[]> {
   try {
-    const { data: wallet } = await supabase.from('wallets').select('id').eq('user_id', userId).is('team_id', null).maybeSingle()
+    const wallet = await getWallet(userId, teamId)
     if (!wallet) return []
-    const { data, error } = await supabase.from('credit_transactions').select('*').eq('wallet_id', (wallet as { id: string }).id).order('created_at', { ascending: false }).limit(limit)
-    if (error) { reportError('creditsService.getTransactions', error); return [] }
+    const { data, error } = await supabase.from('credit_transactions').select('*').eq('wallet_id', wallet.id).order('created_at', { ascending: false }).limit(limit)
+    if (error) { reportError('creditsService.getTransactions', error, { walletId: wallet.id }); return [] }
     return (data ?? []) as CreditTransaction[]
   } catch (error: unknown) {
-    reportError('creditsService.getTransactions', error)
+    reportError('creditsService.getTransactions', error, { userId, teamId })
     return []
   }
 }

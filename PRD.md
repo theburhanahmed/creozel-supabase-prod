@@ -8,19 +8,20 @@
 
 ## 1. Executive Summary
 
-Creozel is an AI-powered SaaS content automation platform that lets content creators, marketers, and agencies generate multi-format content (text, image, video, audio), schedule and auto-publish it across major social platforms, and track performance — all from a single workspace. The platform is built on a self-hosted Supabase stack (PostgreSQL + GoTrue auth + PostgREST + Storage + Edge Functions) with a React frontend, abstracting away the complexity of managing multiple AI providers and social media APIs behind a clean, team-friendly interface with transparent credit-based billing.
+Creozel is an all-in-one product for organic growth, built for creators, marketers, agencies, and brands. It replaces the fragmented social content workflow by letting teams generate, publish, learn from, and improve social content — text, image, video, and audio — from a single workspace. The platform is built on a self-hosted Supabase stack (PostgreSQL + GoTrue auth + PostgREST + Storage + Edge Functions) with a React frontend, abstracting the complexity of multiple AI providers and social media APIs behind a team-friendly interface with transparent credit-based billing.
 
 ---
 
 ## 2. Problem Statement
 
-Content teams face three compounding problems:
+Content teams face four compounding problems:
 
-1. **Fragmented tooling.** Generating content (AI tools), scheduling it (social schedulers), and measuring results (analytics dashboards) requires three or more separate products with no shared context.
-2. **Manual repetition.** Publishing the same content across Instagram, YouTube, LinkedIn, TikTok, Twitter, and Facebook requires manual effort for each platform, every time.
-3. **Unpredictable AI costs.** Most AI generation tools charge per-call with no visibility into spend until the invoice arrives.
+1. **Fragmented workflow.** Generation, scheduling, publishing, performance review, and iteration are split across separate tools, so context is lost between each step.
+2. **Manual repetition.** Distributing the same content across Instagram, YouTube, LinkedIn, TikTok, Twitter/X, and Facebook requires manual effort for each platform, every time.
+3. **No feedback loop.** Performance data lives in analytics dashboards that are disconnected from the creation tools, so lessons from top-performing content rarely inform the next cycle.
+4. **Unpredictable AI costs.** Most AI generation tools charge per-call with no visibility into spend until the invoice arrives.
 
-Creozel solves all three by combining AI generation, multi-platform publishing, automation pipelines, and usage-based credit billing into one product.
+Creozel solves this by combining AI generation, multi-platform publishing, automation pipelines, performance learning, and usage-based credit billing into one product.
 
 ---
 
@@ -38,12 +39,13 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 ## 4. Goals and Non-Goals
 
 ### Goals
-- Enable end-to-end content creation → scheduling → publishing → analytics in one product
+- Drive organic growth by unifying content creation, scheduling, publishing, learning, and iteration in one product
 - Support all major social platforms (Instagram, YouTube, Twitter/X, Facebook, LinkedIn, TikTok)
 - Provide transparent, predictable credit-based billing with real-time balance visibility
 - Support team collaboration with role-based access control
-- Automate recurring content workflows via n8n-based pipelines
+- Automate recurring content workflows via n8n-based pipelines that generate text, image, video, and audio
 - Deliver AI-generated text, images, video, and audio from a unified interface
+- Close the feedback loop by using performance data to inform future content and pipeline behavior
 
 ### Non-Goals
 - Replacing dedicated analytics platforms (Creozel provides first-party engagement data, not cross-channel attribution)
@@ -109,7 +111,7 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 **AI Providers** (called from Edge Functions)
 - Text: OpenAI GPT-4, GPT-3.5
 - Images: DALL-E 3, Stable Diffusion (via Replicate)
-- Video scripts: OpenAI GPT-4
+- Video: OpenAI GPT-4 (script/planning) + image/TTS providers + assembly step (e.g., FFmpeg or Replicate) for final MP4
 - Audio/TTS: ElevenLabs, Whisper
 - Local inference: Ollama (llama3.2, nomic-embed-text)
 
@@ -163,7 +165,7 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 |---|---|---|
 | Text / Copy | OpenAI GPT-4 | Blog posts, captions, ad copy, threads |
 | Image | DALL-E 3, Stable Diffusion (Replicate) | PNG/JPEG assets |
-| Video Script | OpenAI GPT-4 | Structured script with scene breakdowns |
+| Video | OpenAI GPT-4 + image/TTS/assembly providers | Full MP4 file: image sequence + TTS narration + soundtrack |
 | Audio / TTS | ElevenLabs, Whisper | MP3 audio files |
 
 **Generation Flow:**
@@ -172,13 +174,13 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 3. A Supabase Edge Function (`/functions/v1/generate-content`) is invoked, calls the AI provider, and updates the job row
 4. Frontend subscribes to `content_jobs` row changes via Realtime — no polling required
 5. On completion, the generated asset is uploaded to Supabase Storage and the public URL is stored on the job row
-6. Credits are deducted from the user's wallet on successful completion; reserved credits are released on failure
+6. Credits are deducted from the active team's wallet on successful completion; reserved credits are released on failure
 
 **Requirements:**
 - Credit cost is estimated and displayed before generation begins
 - Users can cancel in-progress jobs; reserved credits are released immediately
 - Generated content is saved to the Media Library automatically
-- Brand voice guidelines from the user's Brand Profile are injected into the Edge Function system prompt
+- Brand voice guidelines from the active team's Brand Profile are injected into the Edge Function system prompt
 - Generation errors surface as toast notifications with actionable messages
 - Content generation page must call real Edge Function endpoints — no mock data or `setTimeout` simulation
 
@@ -198,7 +200,18 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 - Disconnecting an account revokes the stored token and cancels any scheduled posts for that account
 - Incoming platform webhooks are handled by a Supabase Edge Function, stored as `webhook_events` rows, and processed asynchronously
 
-**Publishing:**
+**Publishing Modes by Platform:**
+
+| Platform | Direct Publish | Schedule | Notes |
+|---|---|---|---|
+| Twitter/X | Yes | Yes | Text, images, video, polls via API |
+| LinkedIn | Yes | Yes | Posts, articles, images, video via API |
+| Facebook | Yes | Yes | Page posts, images, video via Graph API |
+| Instagram | Posts / Carousels only | Yes | Reels and Stories require manual finalization in the mobile app |
+| TikTok | Feed videos only | Yes | Direct Post API; other formats (e.g., Stories, LIVE) out of scope |
+| YouTube | Yes | Yes | Videos via YouTube Data API; Shorts via standard upload endpoint |
+
+**Publishing Requirements:**
 - Posts can be published immediately or scheduled for a future datetime
 - Scheduled posts appear on the Calendar view
 - Post status lifecycle: `draft → scheduled → published | failed`
@@ -223,20 +236,24 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 
 ### 6.5 Automation Pipelines
 
-**Description:** Visual workflow automation via n8n for recurring content tasks — e.g., "every Monday at 9am, generate a LinkedIn post about our latest product update and schedule it."
+**Description:** Pipelines are the automation core of Creozel. Users build them in a simplified Creozel pipeline builder that produces n8n-compatible JSON under the hood. A pipeline can generate multi-format content (text, image, video, and audio) on a schedule or webhook, optionally transform it, publish to one or more social platforms, and feed performance data back into future runs. The automation style is similar to Faceless.video, but broader: multi-format generation, multi-platform publishing, performance learning, and iterative improvement are all handled in the same workflow.
 
 **Pipeline Components:**
-- **Trigger:** Cron schedule or webhook (configured in n8n)
-- **Steps:** Generate content (via Edge Function webhook) → optionally transform → publish to one or more platforms
-- **Templates:** Reusable n8n workflow configurations
+- **Trigger:** Cron schedule or webhook (configured in the builder and rendered as n8n trigger nodes)
+- **Steps:** Generate content (text, image, video, audio via Edge Function webhook) → optionally transform → publish to one or more platforms → collect performance data → adjust future prompts or scheduling
+- **Templates:** Reusable pipeline configurations stored as JSON in a `pipeline_templates` table; the builder can instantiate a template into an editable n8n workflow
 
 **Requirements:**
-- Users create and manage pipelines via the embedded n8n interface or Creozel's pipeline UI
+- Users create and manage pipelines through a simplified Creozel builder that generates n8n JSON; advanced users can export and edit the raw JSON
+- A single pipeline can generate text, image, video, and audio content and route each asset to the appropriate platform
+- Video generation produces full video files: an image sequence + TTS narration + soundtrack, assembled into a final MP4 via the `generate-content` Edge Function
 - Each pipeline execution is logged in a `pipeline_executions` table with status (`pending`, `running`, `completed`, `failed`) and duration
+- Generated outputs are tracked in a `pipeline_outputs` table linking each execution to the resulting `content_jobs`, `media_items`, and optional `scheduled_posts`
 - The Workflow Dashboard shows real stats from the `pipeline_executions` table via PostgREST — no hardcoded values
 - Stats displayed: active pipeline count, total executions, estimated time saved (hours), success rate
 - Users can pause, resume, or delete pipelines
 - Failed executions show the step that failed and the error message
+- Performance results from published pipeline outputs are available as inputs to the next pipeline iteration
 
 ---
 
@@ -260,13 +277,14 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 
 ### 6.7 Credits & Billing
 
-**Description:** A wallet-based credit system where users purchase credit bundles and spend them on AI generation. Subscription plans determine the monthly credit allocation and feature access.
+**Description:** A wallet-based credit system where teams purchase credit bundles or subscribe to plans that include an unlimited-generation tier for specific content types. The wallet is scoped to the active team (tenant); all team members share the same balance and billing.
 
 **Credit System:**
-- Each user/team has a `wallets` row in PostgreSQL with a real-time balance
+- Each team has a `wallets` row in PostgreSQL with a real-time balance
 - Credits are reserved at job creation and deducted on completion (or released on failure) via database functions
 - Transaction history is stored in a `credit_transactions` table with type labels: `purchase`, `deduction`, `refund`, `bonus`
-- Credit cost per generation type is configurable in a `pricing_config` table
+- Credit cost per content type is configurable in a `pricing_config` table
+- Subscription plans may include unlimited-generation tiers for specific content types (e.g., unlimited text generation on Pro); unlimited items bypass credit reservation and record a zero-cost transaction for auditing
 
 **Billing:**
 - Subscription plans are managed via Stripe (global) and Razorpay (India)
@@ -275,19 +293,21 @@ Creozel solves all three by combining AI generation, multi-platform publishing, 
 - Invoices are generated per billing cycle and downloadable as PDF
 - Users can add/remove payment methods from the Billing settings page
 - Overage beyond plan credits can be purchased as top-ups
+- Team Owner and Team Admin roles manage billing and can view the team wallet; Editors and Viewers do not have billing access
 
 ---
 
 ### 6.8 Team Collaboration
 
-**Description:** Multi-user workspaces where teams share content, pipelines, social connections, and analytics.
+**Description:** Multi-user workspaces where teams share content, pipelines, social connections, analytics, and a single tenant-level wallet.
 
 **Requirements:**
 - A user can create or join multiple teams; they switch between teams via a workspace selector
 - Team data is stored in a `teams` table; membership in `team_members` with role column
 - Team owners can invite members by email; invitations stored in `team_invitations` and expire after 7 days
 - Role changes take effect immediately (RLS policies re-evaluated on next request)
-- All resources (posts, pipelines, media, analytics) are scoped to the active team via `team_id` foreign keys and RLS
+- All resources (posts, pipelines, media, analytics, wallets, social connections) are scoped to the active team via `team_id` foreign keys and RLS
+- The team wallet is the single billing boundary for the tenant: all generation, publishing, and storage costs are charged to the active team's wallet
 - Team activity log stored in `team_activity_log`
 - Team owners can transfer ownership to another admin
 
@@ -366,10 +386,11 @@ All data access goes through the Supabase client (`@supabase/supabase-js`). Ther
 | `social_connections` | OAuth-linked platform accounts |
 | `webhook_events` | Incoming platform webhook payloads |
 | `pipeline_executions` | n8n workflow run logs |
+| `pipeline_outputs` | Links each pipeline execution to generated content, media, and scheduled posts for feedback-loop tracking |
 | `media_items` | Media library index |
-| `wallets` | Credit balances per user/team |
+| `wallets` | Credit balances per team (tenant) |
 | `credit_transactions` | Credit debit/credit history |
-| `pricing_config` | Credit cost per content type |
+| `pricing_config` | Credit cost per content type and unlimited-generation plan entitlements |
 | `subscriptions` | Stripe/Razorpay subscription state |
 | `notifications` | In-app notification feed |
 | `analytics_events` | User action tracking |
@@ -475,9 +496,9 @@ The following gaps represent the remaining work to reach a shippable MVP. Each g
 
 | Term | Definition |
 |---|---|
-| **Pipeline** | An n8n workflow that automates recurring content generation and publishing |
+| **Pipeline** | The automation core of Creozel: an n8n workflow that can generate text, image, video, and audio content, publish to multiple platforms, learn from performance data, and iterate on future outputs |
 | **ContentJob** | An async AI generation task tracked in the `content_jobs` table |
-| **Wallet** | A user or team's credit balance stored in the `wallets` table |
+| **Wallet** | A team's credit balance (tenant-level) stored in the `wallets` table |
 | **Credit** | The unit of currency for AI generation; purchased in bundles or included in plans |
 | **SocialConnection** | An OAuth-linked social platform account stored in `social_connections` |
 | **BrandProfile** | A user's brand identity settings injected into AI generation prompts |
@@ -485,3 +506,82 @@ The following gaps represent the remaining work to reach a shippable MVP. Each g
 | **Edge Function** | A Deno serverless function deployed on Supabase, used for AI calls and webhooks |
 | **GoTrue** | Supabase's authentication server handling JWT sessions |
 | **PostgREST** | Supabase's auto-generated REST API layer over PostgreSQL |
+
+---
+
+## 15. Implementation Plan — Next Dev Cycle
+
+The next cycle focuses on the core product loop: generating multi-format content, publishing it, surfacing performance, and running the first pipeline end-to-end. All items below are drawn from the MVP gaps in Section 12 and grouped by priority and dependency.
+
+### Wave 1: Foundation (Critical — Unblocks everything)
+
+| # | Task | Why | Spec | Definition of Done |
+|---|---|---|---|---|
+| 1 | Finalize core database schema migrations | All frontend pages depend on these tables | `mvp-database-schema` | Migrations run cleanly in CI; `profiles`, `content_jobs`, `scheduled_posts`, `pipeline_executions`, `pipeline_outputs`, `media_items`, `wallets`, `social_connections` exist with RLS enabled; `wallets` has a single row per `team_id` |
+| 2 | Implement `generate-content` Edge Function | Needed for text, image, video, and audio generation | `mvp-content-generation` | Function accepts content type, prompt, brand context; returns job ID; for video, assembles image sequence + TTS + soundtrack into MP4; updates `content_jobs` and `media_items` on completion |
+| 3 | Verify auth end-to-end and tenant-level wallet wiring | Login/register/logout and team wallet must be solid before users can access the product | `mvp-auth-flow`, `mvp-credits-billing` | `AppContext` listens to `onAuthStateChange`; login/register forms work; RLS policies active; `wallets` is team-scoped and shared across team members |
+
+### Wave 2: Content Loop (Critical — Proves the core promise)
+
+| # | Task | Why | Spec | Definition of Done |
+|---|---|---|---|---|
+| 4 | Complete `ContentHub.tsx` | Unified generation UI for text, image, video, audio | `mvp-content-generation` | Real Edge Function calls, job status via Realtime, results saved to Media Library, credit estimate shown before generation; video output is a full MP4 |
+| 5 | Complete `Calendar.tsx` | Scheduling and rescheduling is central to publishing | `mvp-calendar` | FullCalendar wired to `scheduled_posts`, drag-and-drop updates, color-coded platforms, failed posts shown in red |
+| 6 | Complete `WorkflowDashboard.tsx` | Pipelines are the automation core; this is the control surface | `mvp-workflow-dashboard` | Live stats from `pipeline_executions`, pause/resume/delete actions, failed-step details, TypeScript strict clean |
+| 7 | Build `MediaGallery.tsx` | Generated assets must be reusable across posts and pipelines | `mvp-media-library` | Storage-backed gallery, filter by type, attach to posts; supports full MP4 video playback |
+
+### Wave 3: Growth Loop (High — Closes the feedback cycle)
+
+| # | Task | Why | Spec | Definition of Done |
+|---|---|---|---|---|
+| 8 | Complete `Dashboard.tsx` | Organic growth requires real performance overview | `mvp-dashboard` | Stats from `analytics_overview` view, no hardcoded placeholders, links to top-performing content |
+| 9 | Complete social accounts + OAuth connection UI | Publishing to platforms requires authenticated connections | `mvp-social-accounts` | OAuth flows, `social_connections` rows, disconnect/revoke, scoped to team |
+| 10 | Complete credits and billing pages | Predictable cost control and unlimited tiers are core differentiators | `mvp-credits-billing` | Team wallet balance, transaction history, usage history, top-up UI; plan configuration supports unlimited generation tiers for specific content types |
+| 11 | Complete `Settings.tsx` and `UserProfile.tsx` | Brand voice, integrations, and profile settings feed generation quality | `mvp-settings` | Profile, brand, integrations, notification tabs functional |
+
+### Wave 4: Collaboration & Polish (Medium — Team readiness)
+
+| # | Task | Why | Spec | Definition of Done |
+|---|---|---|---|---|
+| 12 | Complete `Notifications.tsx` | Real-time alerts for generation, publishing, and pipeline failures | `mvp-notifications` | Realtime subscription, email preferences, dismiss/read states |
+| 13 | Complete `Team.tsx` | Agencies and brands need multi-user workspaces | `mvp-team` | Invite by email, role management, team switching, activity log |
+| 14 | Enforce TypeScript strict mode and `errorReporter.ts` | Code quality gates for shipping | `mvp-typescript-strict`, `mvp-error-reporter` | `npx tsc --noEmit` exits 0; all service `catch` blocks use `catch (error: unknown)` and report via `errorReporter.ts` |
+
+### Wave 5: Pipeline as Automation Core (High — Product differentiator)
+
+| # | Task | Why | Spec | Definition of Done |
+|---|---|---|---|---|
+| 15 | Define pipeline templates for multi-format content | Show users how to automate text, image, video, and audio from one workflow | `mvp-workflow-dashboard` | At least three reusable n8n templates in repo: blog/carousel post, short-form video, audio snippet |
+| 16 | Build the simplified Creozel pipeline builder | The core promise is a Creozel-native automation experience, not just n8n exposure | `mvp-workflow-dashboard` (new builder spec) | Builder UI supports trigger, content-type steps, transform rules, and publish targets; exports valid n8n JSON; can instantiate templates |
+| 17 | Connect pipeline outputs to publishing and analytics | A pipeline is only useful if it can publish and learn | `mvp-workflow-dashboard`, `mvp-calendar`, `mvp-analytics` | Generated assets are auto-scheduled, `pipeline_outputs` links posts to executions, success metrics appear in dashboard |
+
+### Ordering Notes
+- **Do not start Wave 2 until Wave 1 database migrations, the `generate-content` Edge Function, and the tenant-level wallet are in place.**
+- **Wave 5 is the highest product-priority differentiator but depends on Waves 2–4; start scaffolding templates and the builder UI once `ContentHub` is generating real assets (especially full MP4 video).**
+- **Code-quality tasks (Wave 4) should run in parallel with feature work, not as a final cleanup pass.**
+- **The `pipeline_outputs` table (Wave 1) must be implemented before Wave 5 feedback-loop work can be completed.**
+
+---
+
+## 16. Decisions, Assumptions & Open Questions
+
+### Decisions
+1. **Pipeline authoring UX:** Users build pipelines in a simplified Creozel pipeline builder that generates n8n-compatible JSON under the hood. Advanced users can export/import raw JSON for direct n8n editing.
+2. **Performance feedback loop:** Use a dedicated `pipeline_outputs` table. Each pipeline execution produces one or more outputs, each linked to a `content_job_id`, optional `media_item_id`, and optional `scheduled_post_id`. This decouples pipeline runs from published posts and lets a single execution generate multiple assets.
+3. **Video/audio generation scope:** Pipelines generate full video files: image sequence + TTS narration + soundtrack, assembled into a final MP4. No native editor is required; generated cuts are final.
+4. **Platform publishing depth:** Direct publishing and scheduling are supported for Twitter/X, LinkedIn, Facebook, and YouTube. Instagram supports direct publishing for posts and carousels only; Reels and Stories require manual finalization in the mobile app. TikTok supports feed videos via the Direct Post API; other formats are out of scope.
+5. **Pricing model:** Plans include credit-based generation and unlimited-generation tiers for specific content types (e.g., unlimited text on Pro). Unlimited items are recorded as zero-cost transactions for auditing.
+6. **Team isolation for pipelines:** Pipelines, executions, outputs, and wallets are owned by the team (tenant). All team members in the active workspace share the team wallet; personal wallets are not used.
+
+### Assumptions
+- The Supabase self-hosted stack (PostgreSQL, GoTrue, PostgREST, Storage, Edge Functions, Realtime) remains the production backend; no new backend service is introduced.
+- n8n remains the pipeline execution engine; the Creozel builder generates n8n-compatible JSON that can be run by the embedded n8n instance.
+- "Organic growth" is measured by first-party engagement metrics (likes, comments, shares, reach, impressions) synced from platform APIs; cross-channel attribution is out of scope.
+- "Video generation" in the pipeline context means a complete MP4 file generated from image sequence + TTS + soundtrack via external AI providers; native video editing is not required.
+- Credit costs are uniform per content type at first; per-model or per-platform pricing can come later.
+
+### Open Questions
+1. **Video provider selection:** Which external provider(s) will assemble the final MP4 (e.g., Replicate, Runway, Pika, or a custom FFmpeg pipeline on Supabase Storage)? This affects cost and quality.
+2. **n8n licensing/hosting:** Will the embedded n8n editor be self-hosted inside the same Docker Compose stack, or will we call a managed n8n instance? This affects builder integration complexity.
+3. **Unlimited-tier enforcement:** Should unlimited-generation limits be enforced by plan type in `pricing_config` or by feature flags on the `subscriptions` table?
+4. **Storage billing:** Is media storage counted against the team wallet as credits, or is it a separate storage quota per plan?

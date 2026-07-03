@@ -5,19 +5,20 @@ import { getTransactions, getWallet } from '../../services/creditsService'
 import type { CreditTransaction, Wallet } from '../../types'
 
 export const UsageHistory: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
+  const teamId = activeTeam?.id
   const [transactions, setTransactions] = useState<CreditTransaction[]>([])
   const [wallet, setWallet] = useState<Wallet | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     if (!user) return
-    void Promise.all([getTransactions(user.id), getWallet(user.id)]).then(([txs, w]) => {
+    void Promise.all([getTransactions(user.id, 50, teamId), getWallet(user.id, teamId)]).then(([txs, w]) => {
       setTransactions(txs)
       setWallet(w)
       setLoading(false)
     })
-  }, [user])
+  }, [user, teamId])
 
   const deductions = transactions.filter((t) => t.type === 'deduction')
   const totalUsed  = deductions.reduce((sum, t) => sum + Math.abs(t.amount), 0)

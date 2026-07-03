@@ -12,6 +12,7 @@ import {
 } from 'lucide-react'
 import { authService } from '../../services/authService'
 import { useAppContext } from '../../context/AppContext'
+import { isValidEmail, isValidPassword } from '../../lib/utils'
 
 export const RegisterForm: React.FC = () => {
   const navigate = useNavigate()
@@ -29,12 +30,18 @@ export const RegisterForm: React.FC = () => {
     e.preventDefault()
     setError('')
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match')
+    if (!isValidEmail(email)) {
+      setError('Please enter a valid email address')
       return
     }
-    if (password.length < 8) {
-      setError('Password must be at least 8 characters')
+    if (!isValidPassword(password)) {
+      setError(
+        'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number',
+      )
+      return
+    }
+    if (password !== confirmPassword) {
+      setError('Passwords do not match')
       return
     }
     if (!acceptTerms) {
@@ -44,12 +51,19 @@ export const RegisterForm: React.FC = () => {
 
     setLoading(true)
     try {
-      const user = await authService.register({ name: fullName, email, password })
-      setUser(user)
-      toast.success('Account created!', {
-        description: 'Check your email to confirm your account.',
+      const { user, requiresEmailConfirmation } = await authService.register({
+        name: fullName,
+        email,
+        password,
       })
-      navigate('/', { replace: true })
+      if (requiresEmailConfirmation) {
+        toast.success('Account created! Please check your email to confirm your account.')
+        navigate('/auth/confirm-sent', { replace: true })
+      } else {
+        setUser(user)
+        toast.success('Account created!')
+        navigate('/', { replace: true })
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Registration failed')
     } finally {

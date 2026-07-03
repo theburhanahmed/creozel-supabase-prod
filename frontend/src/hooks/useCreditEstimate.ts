@@ -110,8 +110,9 @@ export function useCreditEstimate(
     }, 400)
 
     return () => {
-      // Invalidate any in-flight fetch for this effect run
-      fetchIdRef.current++
+      // The next effect run already incremented fetchIdRef.current, so any
+      // in-flight response for the previous currentFetchId will be ignored.
+      // Only clear the pending debounce timer here.
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current)
       }

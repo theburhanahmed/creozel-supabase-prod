@@ -224,7 +224,7 @@ const RecentPosts: React.FC<{ posts: ScheduledPost[]; loading: boolean }> = ({
 
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 export const Dashboard: React.FC = () => {
-  const { user } = useAppContext()
+  const { user, activeTeam } = useAppContext()
 
   const [overview, setOverview] = useState<AnalyticsOverview | null>(null)
   const [walletBalance, setWalletBalance] = useState<number | null>(null)
@@ -239,11 +239,12 @@ export const Dashboard: React.FC = () => {
     setError(null)
 
     try {
+      const teamId = activeTeam?.id
       const [ov, wallet, posts, ob] = await Promise.all([
-        getAnalyticsOverview(),
-        getWalletBalance(user.id),
-        getRecentPosts(undefined, 5),
-        getOnboardingStatus(user.id),
+        getAnalyticsOverview(teamId),
+        getWalletBalance(user.id, teamId),
+        getRecentPosts(teamId, 5),
+        getOnboardingStatus(user.id, teamId),
       ])
 
       setOverview(ov)
@@ -261,7 +262,7 @@ export const Dashboard: React.FC = () => {
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [user, activeTeam?.id])
 
   useEffect(() => {
     void loadDashboard()

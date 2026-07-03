@@ -1,132 +1,140 @@
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
-import type { SocialPlatform } from '../types'
+import type { ContentSuggestion, Pipeline, PostPerformance } from '../types'
 
-export type AnalyticsRange = 7 | 30 | 90
-
-export interface EngagementDataPoint {
-  date: string       // 'YYYY-MM-DD'
-  count: number
-  event_type: string
-}
-
-export interface PlatformBreakdown {
-  platform: SocialPlatform
-  count: number
-}
-
-/**
- * Fetch engagement events grouped by day for the given time range.
- */
-export async function getEngagementTrend(
-  range: AnalyticsRange,
-  teamId?: string,
-): Promise<EngagementDataPoint[]> {
+export async function getPostPerformance(teamId: string, limit = 50): Promise<PostPerformance[]> {
   try {
-    const since = new Date()
-    since.setDate(since.getDate() - range)
+    const { data, error } = await supabase
+      .from('post_performance')
+      .select('*, scheduled_posts!inner(team_id)')
+      .eq('scheduled_posts.team_id', teamId)
+      .order('collected_at', { ascending: false })
+      .limit(limit)
 
-    let query = supabase
-      .from('analytics_events')
-      .select('created_at, event_type')
-      .gte('created_at', since.toISOString())
-      .order('created_at', { ascending: true })
-
-    if (teamId) {
-      query = query.eq('team_id', teamId)
-    }
-
-    const { data, error } = await query
-    if (error) {
-      reportError('analyticsService.getEngagementTrend', error, { range, teamId })
-      return []
-    }
-
-    // Group client-side by date + event_type
-    const grouped: Record<string, Record<string, number>> = {}
-    for (const row of data ?? []) {
-      const date = (row.created_at as string).slice(0, 10)
-      const type = (row.event_type as string) ?? 'unknown'
-      if (!grouped[date]) grouped[date] = {}
-      grouped[date][type] = (grouped[date][type] ?? 0) + 1
-    }
-
-    const result: EngagementDataPoint[] = []
-    for (const [date, types] of Object.entries(grouped)) {
-      for (const [event_type, count] of Object.entries(types)) {
-        result.push({ date, count, event_type })
-      }
-    }
-
-    return result.sort((a, b) => a.date.localeCompare(b.date))
+    if (error) { reportError('analyticsService.getPostPerformance', error, { teamId }); return [] }
+    return (data ?? []) as PostPerformance[]
   } catch (error: unknown) {
-    reportError('analyticsService.getEngagementTrend', error, { range, teamId })
+    reportError('analyticsService.getPostPerformance', error, { teamId })
     return []
   }
 }
 
-/**
- * Fetch published post counts grouped by platform for the given time range.
- */
-export async function getPlatformBreakdown(
-  range: AnalyticsRange,
-  teamId?: string,
-): Promise<PlatformBreakdown[]> {
+export async function getContentSuggestions(teamId: string, includeApplied = false): Promise<ContentSuggestion[]> {
   try {
-    const since = new Date()
-    since.setDate(since.getDate() - range)
-
     let query = supabase
-      .from('scheduled_posts')
-      .select('platform')
-      .eq('status', 'published')
-      .gte('scheduled_at', since.toISOString())
+      .from('content_suggestions')
+      .select('*')
+      .eq('team_id', teamId)
+      .order('created_at', { ascending: false })
+      .limit(50)
 
-    if (teamId) {
-      query = query.eq('team_id', teamId)
+    if (!includeApplied) {
+      query = query.eq('applied', false)
     }
 
     const { data, error } = await query
-    if (error) {
-      reportError('analyticsService.getPlatformBreakdown', error, { range, teamId })
-      return []
-    }
-
-    // Group client-side by platform
-    const counts: Partial<Record<SocialPlatform, number>> = {}
-    for (const row of data ?? []) {
-      const platform = row.platform as SocialPlatform
-      counts[platform] = (counts[platform] ?? 0) + 1
-    }
-
-    return Object.entries(counts).map(([platform, count]) => ({
-      platform: platform as SocialPlatform,
-      count: count ?? 0,
-    }))
+    if (error) { reportError('analyticsService.getContentSuggestions', error, { teamId }); return [] }
+    return (data ?? []) as ContentSuggestion[]
   } catch (error: unknown) {
-    reportError('analyticsService.getPlatformBreakdown', error, { range, teamId })
+    reportError('analyticsService.getContentSuggestions', error, { teamId })
     return []
   }
 }
 
-/**
- * Track an analytics event for the current user/team.
- */
-export async function trackEvent(
-  eventName: string,
-  userId: string,
-  teamId?: string,
-  properties?: Record<string, unknown>,
-): Promise<void> {
+export async function applyContentSuggestion(
+  suggestion: ContentSuggestion,
+  pipelineId: string,
+): Promise<Pipeline | null> {
   try {
-    await supabase.from('analytics_events').insert({
-      user_id:    userId,
-      team_id:    teamId ?? null,
-      event_type: eventName,
-      properties: properties ?? {},
+    const { data: pipeline, error: fetchError } = await supabase
+      .from('pipelines')
+      .select('*')
+      .eq('id', pipelineId)
+      .eq('team_id', suggestion.team_id)
+      .single()
+
+    if (fetchError || !pipeline) {
+      reportError('analyticsService.applyContentSuggestion.fetch', fetchError, { suggestionId: suggestion.id, pipelineId })
+      return null
+    }
+
+    const config = pipeline.config as Record<string, unknown> ?? {}
+    const updatedConfig = {
+      ...config,
+      promptTemplate: suggestion.prompt_change ?? config.promptTemplate,
+    }
+
+    const [{ data: updatedPipeline, error: updateError }, { error: markError }] = await Promise.all([
+      supabase
+        .from('pipelines')
+        .update({ config: updatedConfig })
+        .eq('id', pipelineId)
+        .eq('team_id', suggestion.team_id)
+        .select()
+        .single(),
+      supabase
+        .from('content_suggestions')
+        .update({ applied: true, pipeline_id: pipelineId })
+        .eq('id', suggestion.id)
+        .eq('team_id', suggestion.team_id),
+    ])
+
+    if (updateError) { reportError('analyticsService.applyContentSuggestion.update', updateError, { pipelineId }); return null }
+    if (markError) { reportError('analyticsService.applyContentSuggestion.mark', markError, { suggestionId: suggestion.id }) }
+
+    return updatedPipeline as Pipeline
+  } catch (error: unknown) {
+    reportError('analyticsService.applyContentSuggestion', error, { suggestionId: suggestion.id, pipelineId })
+    return null
+  }
+}
+
+export async function markSuggestionApplied(suggestionId: string, teamId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('content_suggestions')
+      .update({ applied: true })
+      .eq('id', suggestionId)
+      .eq('team_id', teamId)
+
+    if (error) { reportError('analyticsService.markSuggestionApplied', error, { suggestionId }); return false }
+    return true
+  } catch (error: unknown) {
+    reportError('analyticsService.markSuggestionApplied', error, { suggestionId })
+    return false
+  }
+}
+
+export async function analyzePerformance(teamId: string): Promise<{ suggestions: ContentSuggestion[]; error?: string }> {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string | undefined
+    if (!supabaseUrl) {
+      return { suggestions: [], error: 'Supabase URL not configured' }
+    }
+
+    const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined
+    if (!anonKey) {
+      return { suggestions: [], error: 'Supabase anon key not configured' }
+    }
+
+    const res = await fetch(`${supabaseUrl}/functions/v1/analyze-performance`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${anonKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ team_id: teamId }),
     })
+
+    if (!res.ok) {
+      const body = await res.text()
+      return { suggestions: [], error: body || 'Analysis failed' }
+    }
+
+    const data = (await res.json()) as { suggestions?: ContentSuggestion[] }
+    return { suggestions: (data.suggestions ?? []) as ContentSuggestion[] }
   } catch (error: unknown) {
-    // Non-fatal — tracking failures should not break the user experience
-    reportError('analyticsService.trackEvent', error, { eventName, userId })
+    reportError('analyticsService.analyzePerformance', error, { teamId })
+    return { suggestions: [], error: error instanceof Error ? error.message : 'Unknown error' }
   }
 }

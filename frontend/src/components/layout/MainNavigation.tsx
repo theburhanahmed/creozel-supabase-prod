@@ -1,14 +1,13 @@
 import React, { useEffect, useState, useRef } from 'react'
-import { Link, useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  HomeIcon, BarChart2Icon, CalendarIcon, MessageSquareIcon, UsersIcon,
-  PenToolIcon, RocketIcon, GlobeIcon, FolderIcon, FileTextIcon, ImageIcon,
-  VideoIcon, MicIcon, SettingsIcon, HelpCircleIcon, BellIcon, MailIcon,
-  MenuIcon, XIcon, ChevronDownIcon, DollarSignIcon, SparklesIcon, SunIcon,
-  MoonIcon, ChevronRightIcon, LayoutDashboardIcon, TrendingUpIcon, SendIcon,
-  WorkflowIcon, TargetIcon, TestTubeIcon, CreditCardIcon, HistoryIcon,
-  ReceiptIcon, HeadphonesIcon, SearchIcon,
+  HomeIcon, BarChart2Icon, CalendarIcon, UsersIcon,
+  RocketIcon, GlobeIcon, FolderIcon,
+  SettingsIcon, HelpCircleIcon, BellIcon, MailIcon,
+  MenuIcon, XIcon, DollarSignIcon, SparklesIcon, SunIcon,
+  MoonIcon, ChevronRightIcon, WorkflowIcon, CreditCardIcon, HistoryIcon,
+  ReceiptIcon, SearchIcon,
 } from 'lucide-react'
 import { FocusTrap } from '../ui/AccessibilityUtils'
 import { cn } from '../../lib/utils'
@@ -47,48 +46,13 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
 
   const navItems: NavItem[] = [
     { icon: <HomeIcon size={18} />, title: 'Home', href: '/' },
-    {
-      icon: <SparklesIcon size={18} />, title: 'Create', href: '/content',
-      children: [
-        { icon: <FileTextIcon size={16} />, title: 'Text Editor', href: '/content/text', description: 'Generate text content' },
-        { icon: <ImageIcon size={16} />, title: 'Image Editor', href: '/content/image', description: 'Create images' },
-        { icon: <VideoIcon size={16} />, title: 'Video Editor', href: '/content/video', description: 'Generate videos' },
-        { icon: <HeadphonesIcon size={16} />, title: 'Audio Editor', href: '/content/audio', description: 'Create audio' },
-        { icon: <FolderIcon size={16} />, title: 'Content Library', href: '/content/library', description: 'All generated content' },
-      ],
-    },
-    {
-      icon: <RocketIcon size={18} />, title: 'Autopilot', href: '/autopilot',
-      children: [
-        { icon: <LayoutDashboardIcon size={16} />, title: 'Dashboard', href: '/autopilot', description: 'Automation overview' },
-        { icon: <PenToolIcon size={16} />, title: 'Create Pipeline', href: '/autopilot/create', description: 'New automation' },
-        { icon: <CalendarIcon size={16} />, title: 'Scheduler', href: '/autopilot/scheduler', description: 'Schedule posts' },
-      ],
-    },
-    {
-      icon: <BarChart2Icon size={18} />, title: 'Analytics', href: '/analytics',
-      children: [
-        { icon: <LayoutDashboardIcon size={16} />, title: 'Overview', href: '/analytics', description: 'Analytics dashboard' },
-        { icon: <TrendingUpIcon size={16} />, title: 'Performance', href: '/analytics/performance', description: 'Content metrics' },
-        { icon: <TestTubeIcon size={16} />, title: 'A/B Testing', href: '/analytics/ab-testing', description: 'Test variations' },
-        { icon: <TargetIcon size={16} />, title: 'Audience', href: '/analytics/audience', description: 'Audience insights' },
-      ],
-    },
-    {
-      icon: <SendIcon size={18} />, title: 'Publishing', href: '/calendar',
-      children: [
-        { icon: <CalendarIcon size={16} />, title: 'Calendar', href: '/calendar', description: 'Content schedule' },
-      ],
-    },
+    { icon: <SparklesIcon size={18} />, title: 'Create', href: '/content' },
+    { icon: <RocketIcon size={18} />, title: 'Autopilot', href: '/autopilot' },
+    { icon: <BarChart2Icon size={18} />, title: 'Analytics', href: '/analytics' },
+    { icon: <CalendarIcon size={18} />, title: 'Calendar', href: '/calendar' },
     { icon: <GlobeIcon size={18} />, title: 'Social Accounts', href: '/social-accounts' },
     { icon: <FolderIcon size={18} />, title: 'Media Library', href: '/media' },
-    {
-      icon: <MessageSquareIcon size={18} />, title: 'Communication', href: '/messages',
-      children: [
-        { icon: <MessageSquareIcon size={16} />, title: 'Messages', href: '/messages', description: 'Direct messages' },
-        { icon: <UsersIcon size={16} />, title: 'Team', href: '/team', description: 'Team members' },
-      ],
-    },
+    { icon: <UsersIcon size={18} />, title: 'Team', href: '/team' },
     { icon: <WorkflowIcon size={18} />, title: 'Workflows', href: '/workflow' },
   ]
 

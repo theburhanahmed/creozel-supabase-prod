@@ -52,27 +52,27 @@ export async function getAnalyticsOverview(
 }
 
 /**
- * Fetch the wallet record for the given user.
- * Selects the personal wallet (team_id IS NULL) to satisfy PROP-2:
- * the credits value shown must equal `wallets.balance` for the authenticated user.
+ * Fetch the wallet record for the active scope.
+ * Uses the team wallet when `teamId` is provided, otherwise the personal wallet.
  */
-export async function getWalletBalance(userId: string): Promise<Wallet | null> {
+export async function getWalletBalance(userId: string, teamId?: string): Promise<Wallet | null> {
   try {
-    const { data, error } = await supabase
-      .from('wallets')
-      .select('*')
-      .eq('user_id', userId)
-      .is('team_id', null)
-      .maybeSingle()
+    let query = supabase.from('wallets').select('*').eq('user_id', userId)
+    if (teamId) {
+      query = query.eq('team_id', teamId)
+    } else {
+      query = query.is('team_id', null)
+    }
+    const { data, error } = await query.maybeSingle()
 
     if (error) {
-      reportError('dashboardService.getWalletBalance', error, { userId })
+      reportError('dashboardService.getWalletBalance', error, { userId, teamId })
       return null
     }
 
     return data as Wallet | null
   } catch (error: unknown) {
-    reportError('dashboardService.getWalletBalance', error, { userId })
+    reportError('dashboardService.getWalletBalance', error, { userId, teamId })
     return null
   }
 }
@@ -128,22 +128,35 @@ export async function getRecentPosts(
  */
 export async function getOnboardingStatus(
   userId: string,
+  teamId?: string,
 ): Promise<OnboardingStatus> {
   try {
+    let connectionsQuery = supabase
+      .from('social_connections')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+      .eq('is_active', true)
+    if (teamId) connectionsQuery = connectionsQuery.eq('team_id', teamId)
+    else connectionsQuery = connectionsQuery.is('team_id', null)
+
+    let jobsQuery = supabase
+      .from('content_jobs')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+    if (teamId) jobsQuery = jobsQuery.eq('team_id', teamId)
+    else jobsQuery = jobsQuery.is('team_id', null)
+
+    let postsQuery = supabase
+      .from('scheduled_posts')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', userId)
+    if (teamId) postsQuery = postsQuery.eq('team_id', teamId)
+    else postsQuery = postsQuery.is('team_id', null)
+
     const [connectionsRes, jobsRes, postsRes] = await Promise.all([
-      supabase
-        .from('social_connections')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId)
-        .eq('is_active', true),
-      supabase
-        .from('content_jobs')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
-      supabase
-        .from('scheduled_posts')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', userId),
+      connectionsQuery,
+      jobsQuery,
+      postsQuery,
     ])
 
     if (connectionsRes.error) {

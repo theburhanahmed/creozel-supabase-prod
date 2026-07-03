@@ -22,7 +22,7 @@
  *     the service uses that value in the delete filter
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect } from 'vitest'
 import * as fc from 'fast-check'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -41,7 +41,7 @@ const teamArb: fc.Arbitrary<Team> = fc.record({
   id: fc.uuid(),
   name: fc.string({ minLength: 1, maxLength: 50 }),
   owner_id: fc.uuid(),
-  created_at: fc.date().map((d) => d.toISOString()),
+  created_at: fc.integer({ min: Date.parse('2000-01-01T00:00:00.000Z'), max: Date.parse('2030-01-01T00:00:00.000Z') }).map((ts) => new Date(ts).toISOString()),
 })
 
 /** Generates either a Team or null (simulating personal workspace) */
@@ -86,7 +86,7 @@ describe('Property 4 — Media service team_id propagation', () => {
         fc.property(
           activeTeamArb,
           userIdArb,
-          (activeTeam, userId) => {
+          (activeTeam, _userId) => {
             const teamId = deriveTeamId(activeTeam)
 
             // Simulate what MediaGallery does: pass activeTeam?.id ?? null

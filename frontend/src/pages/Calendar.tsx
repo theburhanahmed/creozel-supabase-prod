@@ -5,6 +5,7 @@ import timeGridPlugin from '@fullcalendar/timegrid'
 import interactionPlugin from '@fullcalendar/interaction'
 import type { EventClickArg, EventInput, EventDropArg } from '@fullcalendar/core'
 import { toast } from 'sonner'
+import { useLocation, useNavigate } from 'react-router-dom'
 import {
   XIcon,
   CalendarIcon,
@@ -16,9 +17,13 @@ import {
   LinkedinIcon,
   FacebookIcon,
   ExternalLinkIcon,
+  PlusIcon,
+  SendIcon,
 } from 'lucide-react'
-import { getScheduledPosts, reschedulePost } from '../services/calendarService'
-import type { ScheduledPost, SocialPlatform } from '../types'
+import { useAppContext } from '../context/AppContext'
+import { getScheduledPosts, reschedulePost, createScheduledPost } from '../services/calendarService'
+import { getSocialConnections } from '../services/socialService'
+import type { ScheduledPost, SocialConnection, SocialPlatform } from '../types'
 
 // ─── Platform config ──────────────────────────────────────────────────────────
 const PLATFORM_CONFIG: Record<
@@ -64,11 +69,13 @@ const PLATFORM_CONFIG: Record<
 }
 
 const STATUS_COLORS: Record<string, string> = {
-  scheduled: '',       // uses platform color
+  scheduled: '',
   published: '#10b981',
   failed:    '#ef4444',
   draft:     '#9ca3af',
 }
+
+const PLATFORM_OPTIONS: SocialPlatform[] = ['twitter', 'linkedin', 'facebook', 'instagram', 'youtube', 'tiktok']
 
 // ─── Post Detail Modal ────────────────────────────────────────────────────────
 interface PostModalProps {
@@ -91,7 +98,6 @@ const PostModal: React.FC<PostModalProps> = ({ post, onClose }) => {
         onClick={onClose}
       />
       <div className="relative glass-enhanced rounded-2xl p-6 w-full max-w-md shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <div
@@ -124,7 +130,6 @@ const PostModal: React.FC<PostModalProps> = ({ post, onClose }) => {
           </button>
         </div>
 
-        {/* Status badge */}
         <div className="mb-4">
           <span
             className={`text-xs px-2.5 py-1 rounded-full font-medium ${
@@ -141,14 +146,12 @@ const PostModal: React.FC<PostModalProps> = ({ post, onClose }) => {
           </span>
         </div>
 
-        {/* Content */}
         <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-4 mb-4">
           <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
             {post.content}
           </p>
         </div>
 
-        {/* Media */}
         {post.media_urls && post.media_urls.length > 0 && (
           <div className="flex gap-2 mb-4 flex-wrap">
             {post.media_urls.map((url, i) => (
@@ -166,7 +169,6 @@ const PostModal: React.FC<PostModalProps> = ({ post, onClose }) => {
           </div>
         )}
 
-        {/* Error message */}
         {post.status === 'failed' && post.error_message && (
           <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl">
             <AlertCircleIcon size={16} className="text-red-500 flex-shrink-0 mt-0.5" />
@@ -178,32 +180,210 @@ const PostModal: React.FC<PostModalProps> = ({ post, onClose }) => {
   )
 }
 
+// ─── Create Post Modal ────────────────────────────────────────────────────────
+interface CreatePostModalProps {
+  initialContent: string
+  initialMediaUrls: string[]
+  connections: SocialConnection[]
+  onClose: () => void
+  onCreated: () => void
+}
+
+const CreatePostModal: React.FC<CreatePostModalProps> = ({
+  initialContent,
+  initialMediaUrls,
+  connections,
+  onClose,
+  onCreated,
+}) => {
+  const { user, activeTeam } = useAppContext()
+  const [content, setContent] = useState(initialContent)
+  const [platform, setPlatform] = useState<SocialPlatform>('twitter')
+  const [scheduledAt, setScheduledAt] = useState('')
+  const [connectionId, setConnectionId] = useState('')
+  const [mediaUrls] = useState<string[]>(initialMediaUrls)
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    const connection = connections.find((c) => c.platform === platform)
+    setConnectionId(connection?.id ?? '')
+  }, [platform, connections])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!user || !content.trim() || !scheduledAt) return
+    if (!connectionId) {
+      toast.error('No connected account for this platform. Connect an account first.')
+      return
+    }
+    setSaving(true)
+    const post = await createScheduledPost(
+      user.id,
+      activeTeam?.id ?? null,
+      content.trim(),
+      platform,
+      new Date(scheduledAt).toISOString(),
+      mediaUrls,
+      connectionId,
+    )
+    setSaving(false)
+    if (post) {
+      toast.success('Post scheduled')
+      onCreated()
+    } else {
+      toast.error('Failed to schedule post')
+    }
+  }
+
+  const platformConfig = PLATFORM_CONFIG[platform]
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative glass-enhanced rounded-2xl p-6 w-full max-w-lg shadow-2xl">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-white">Schedule Post</h2>
+          <button onClick={onClose} className="p-2 rounded-xl glass-light hover:glass transition-colors" aria-label="Close">
+            <XIcon size={18} className="text-gray-500" />
+          </button>
+        </div>
+        <form onSubmit={(e) => { void handleSubmit(e) }} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Platform</label>
+            <div className="flex gap-2 flex-wrap">
+              {PLATFORM_OPTIONS.map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPlatform(p)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                    platform === p
+                      ? 'text-white'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300'
+                  }`}
+                  style={platform === p ? { backgroundColor: PLATFORM_CONFIG[p].color } : undefined}
+                >
+                  {PLATFORM_CONFIG[p].icon} {PLATFORM_CONFIG[p].label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Account</label>
+            <select
+              value={connectionId}
+              onChange={(e) => setConnectionId(e.target.value)}
+              className="w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-900 dark:text-white"
+            >
+              <option value="">Select an account</option>
+              {connections
+                .filter((c) => c.platform === platform)
+                .map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.account_name} ({c.account_id})
+                  </option>
+                ))}
+            </select>
+            {connections.filter((c) => c.platform === platform).length === 0 && (
+              <p className="mt-1 text-xs text-red-500">No connected account for {platformConfig.label}. Connect one in Social Accounts.</p>
+            )}
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Content</label>
+            <textarea
+              value={content}
+              onChange={(e) => setContent(e.target.value)}
+              rows={5}
+              className="w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-[#3FE0A5]/20 focus:border-[#3FE0A5]"
+              placeholder="Write your post..."
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Schedule Time</label>
+            <input
+              type="datetime-local"
+              value={scheduledAt}
+              onChange={(e) => setScheduledAt(e.target.value)}
+              required
+              className="w-full rounded-xl border-2 border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-4 py-2 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-[#3FE0A5]/20 focus:border-[#3FE0A5]"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving || !connectionId}
+              className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white text-sm font-semibold rounded-xl hover:opacity-90 disabled:opacity-50"
+            >
+              {saving ? <RefreshCwIcon size={16} className="animate-spin" /> : <SendIcon size={16} />}
+              Schedule
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  )
+}
+
 // ─── Calendar ─────────────────────────────────────────────────────────────────
 export const Calendar: React.FC = () => {
   const calendarRef = useRef<FullCalendar>(null)
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user, activeTeam } = useAppContext()
   const [posts, setPosts] = useState<ScheduledPost[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedPost, setSelectedPost] = useState<ScheduledPost | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [connections, setConnections] = useState<SocialConnection[]>([])
+
+  const prefillContent = (location.state as { prefillContent?: string } | null)?.prefillContent ?? ''
+  const prefillResultUrl = (location.state as { prefillResultUrl?: string } | null)?.prefillResultUrl ?? ''
 
   const loadPosts = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const data = await getScheduledPosts()
+      const data = await getScheduledPosts(activeTeam?.id ?? undefined)
       setPosts(data)
     } catch {
       setError('Failed to load scheduled posts.')
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [activeTeam?.id])
+
+  const loadConnections = useCallback(async () => {
+    if (!activeTeam?.id) return
+    const data = await getSocialConnections(activeTeam.id)
+    setConnections(data)
+  }, [activeTeam?.id])
 
   useEffect(() => {
     void loadPosts()
-  }, [loadPosts])
+    void loadConnections()
+  }, [loadPosts, loadConnections])
 
-  // Convert posts to FullCalendar events
+  // Open create modal when prefill data arrives from the studio publish action
+  useEffect(() => {
+    if (prefillContent) {
+      setShowCreate(true)
+      // Clear the location state so refreshing does not reopen the modal
+      navigate(location.pathname, { replace: true })
+    }
+  }, [prefillContent, location.pathname, navigate])
+
   const events: EventInput[] = posts.map((post) => {
     const platform = PLATFORM_CONFIG[post.platform]
     const isFailed = post.status === 'failed'
@@ -242,8 +422,8 @@ export const Calendar: React.FC = () => {
       toast.success('Post rescheduled')
       setPosts((prev) =>
         prev.map((p) =>
-          p.id === post.id ? { ...p, scheduled_at: newDate.toISOString() } : p,
-        ),
+          p.id === post.id ? { ...p, scheduled_at: newDate.toISOString() } : p
+        )
       )
     }
   }, [])
@@ -260,14 +440,22 @@ export const Calendar: React.FC = () => {
             {posts.length} post{posts.length !== 1 ? 's' : ''} scheduled
           </p>
         </div>
-        <button
-          onClick={() => void loadPosts()}
-          disabled={loading}
-          className="flex items-center gap-2 px-4 py-2 glass-light rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:glass transition-colors disabled:opacity-50"
-        >
-          <RefreshCwIcon size={16} className={loading ? 'animate-spin' : ''} />
-          Refresh
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowCreate(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <PlusIcon size={16} /> New Post
+          </button>
+          <button
+            onClick={() => void loadPosts()}
+            disabled={loading}
+            className="flex items-center gap-2 px-4 py-2 glass-light rounded-xl text-sm font-medium text-gray-700 dark:text-gray-300 hover:glass transition-colors disabled:opacity-50"
+          >
+            <RefreshCwIcon size={16} className={loading ? 'animate-spin' : ''} />
+            Refresh
+          </button>
+        </div>
       </div>
 
       {/* Platform legend */}
@@ -360,6 +548,20 @@ export const Calendar: React.FC = () => {
         />
       )}
 
+      {/* Create post modal */}
+      {showCreate && user && (
+        <CreatePostModal
+          initialContent={prefillContent}
+          initialMediaUrls={prefillResultUrl ? [prefillResultUrl] : []}
+          connections={connections}
+          onClose={() => setShowCreate(false)}
+          onCreated={() => {
+            setShowCreate(false)
+            void loadPosts()
+          }}
+        />
+      )}
+
       {/* Empty state */}
       {!loading && posts.length === 0 && !error && (
         <div className="glass-enhanced rounded-2xl p-12 text-center">
@@ -370,6 +572,12 @@ export const Calendar: React.FC = () => {
           <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
             Create content and schedule it to see it here.
           </p>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-[#3FE0A5] to-[#38B897] text-white text-sm font-semibold rounded-xl hover:opacity-90 transition-opacity"
+          >
+            <PlusIcon size={16} /> Schedule a Post
+          </button>
         </div>
       )}
     </div>

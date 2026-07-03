@@ -41,9 +41,24 @@ export async function inviteMember(teamId: string, email: string, role: TeamRole
   }
 }
 
-export async function updateMemberRole(memberId: string, role: TeamRole): Promise<boolean> {
+export async function cancelInvitation(invitationId: string): Promise<boolean> {
   try {
-    const { error } = await supabase.from('team_members').update({ role }).eq('id', memberId)
+    const { error } = await supabase.from('team_invitations').delete().eq('id', invitationId)
+    if (error) { reportError('teamService.cancelInvitation', error); return false }
+    return true
+  } catch (error: unknown) {
+    reportError('teamService.cancelInvitation', error)
+    return false
+  }
+}
+
+export async function updateMemberRole(memberId: string, role: TeamRole, teamId: string): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from('team_members')
+      .update({ role })
+      .eq('id', memberId)
+      .eq('team_id', teamId)
     if (error) { reportError('teamService.updateMemberRole', error); return false }
     return true
   } catch (error: unknown) {
@@ -52,13 +67,54 @@ export async function updateMemberRole(memberId: string, role: TeamRole): Promis
   }
 }
 
-export async function removeMember(memberId: string): Promise<boolean> {
+export async function removeMember(memberId: string, teamId: string): Promise<boolean> {
   try {
-    const { error } = await supabase.from('team_members').delete().eq('id', memberId)
+    const { error } = await supabase
+      .from('team_members')
+      .delete()
+      .eq('id', memberId)
+      .eq('team_id', teamId)
     if (error) { reportError('teamService.removeMember', error); return false }
     return true
   } catch (error: unknown) {
     reportError('teamService.removeMember', error)
+    return false
+  }
+}
+
+export async function transferOwnership(teamId: string, newOwnerId: string): Promise<boolean> {
+  try {
+    const { data: oldOwner } = await supabase
+      .from('team_members')
+      .select('id')
+      .eq('team_id', teamId)
+      .eq('role', 'owner')
+      .maybeSingle()
+
+    if (oldOwner) {
+      const { error: demoteError } = await supabase
+        .from('team_members')
+        .update({ role: 'admin' })
+        .eq('id', (oldOwner as { id: string }).id)
+      if (demoteError) throw demoteError
+    }
+
+    const { error: promoteError } = await supabase
+      .from('team_members')
+      .update({ role: 'owner' })
+      .eq('team_id', teamId)
+      .eq('user_id', newOwnerId)
+    if (promoteError) throw promoteError
+
+    const { error: teamError } = await supabase
+      .from('teams')
+      .update({ owner_id: newOwnerId })
+      .eq('id', teamId)
+    if (teamError) throw teamError
+
+    return true
+  } catch (error: unknown) {
+    reportError('teamService.transferOwnership', error)
     return false
   }
 }
@@ -85,5 +141,25 @@ export async function getPendingInvitations(teamId: string): Promise<TeamInvitat
   } catch (error: unknown) {
     reportError('teamService.getPendingInvitations', error)
     return []
+  }
+}
+
+/**
+ * Accept a team invitation using the token from the invitation email.
+ * Returns the joined team_id on success, or null on failure/expired invitation.
+ */
+export async function acceptInvitation(token: string): Promise<string | null> {
+  try {
+    const { data, error } = await supabase
+      .rpc('accept_team_invitation', { p_token: token })
+      .single<string>()
+    if (error) {
+      reportError('teamService.acceptInvitation', error, { token })
+      return null
+    }
+    return data
+  } catch (error: unknown) {
+    reportError('teamService.acceptInvitation', error, { token })
+    return null
   }
 }

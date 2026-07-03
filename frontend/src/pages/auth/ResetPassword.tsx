@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { LockIcon, EyeIcon, EyeOffIcon, AlertCircleIcon } from 'lucide-react'
 import { authService } from '../../services/authService'
 import { reportError } from '../../utils/errorReporter'
+import { isValidPassword } from '../../lib/utils'
 
 export const ResetPassword: React.FC = () => {
   const navigate = useNavigate()
@@ -21,8 +22,10 @@ export const ResetPassword: React.FC = () => {
       setError('Passwords do not match')
       return
     }
-    if (newPassword.length < 8) {
-      setError('Password must be at least 8 characters')
+    if (!isValidPassword(newPassword)) {
+      setError(
+        'Password must be at least 8 characters and include an uppercase letter, a lowercase letter, and a number',
+      )
       return
     }
 
