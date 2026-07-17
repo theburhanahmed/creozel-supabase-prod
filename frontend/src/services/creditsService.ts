@@ -9,11 +9,14 @@ import type { Wallet, CreditTransaction, DodoProduct } from '../types'
  */
 export async function getWallet(userId: string, teamId?: string): Promise<Wallet | null> {
   try {
-    let query = supabase.from('wallets').select('*').eq('user_id', userId)
+    // Team wallets are owned by the team owner (user_id = owner_id), so filtering by
+    // the current user's id would miss them for non-owner members. RLS enforces the
+    // membership check via is_team_member(team_id).
+    let query = supabase.from('wallets').select('*')
     if (teamId) {
       query = query.eq('team_id', teamId)
     } else {
-      query = query.is('team_id', null)
+      query = query.eq('user_id', userId).is('team_id', null)
     }
     const { data, error } = await query.maybeSingle()
     if (error) { reportError('creditsService.getWallet', error, { userId, teamId }); return null }

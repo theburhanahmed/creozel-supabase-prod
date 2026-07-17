@@ -11,7 +11,7 @@ import { StudioLayout } from '../../components/content/studio/StudioLayout'
 import { ConfigurationPanel } from '../../components/content/studio/ConfigurationPanel'
 import { OutputPanel } from '../../components/content/studio/OutputPanel'
 import { SaveAsPipelineModal } from '../../components/content/studio/SaveAsPipelineModal'
-import { getWallet } from '../../services/creditsService'
+
 import { createContentJob, cancelJob } from '../../services/contentService'
 import { saveMediaItemFromJob } from '../../services/mediaService'
 import { supabase } from '../../lib/supabase'
@@ -37,7 +37,7 @@ import type { ContentJob } from '../../types'
  * Requirements: 1.1, 1.4, 1.5, 1.6, 9.1–9.7, 12.1–12.9
  */
 export const ContentGenerationStudio: React.FC = () => {
-  const { user, activeTeam } = useAppContext()
+  const { user, activeTeam, creditsBalance } = useAppContext()
 
   // Master hook — owns all Studio form state and localStorage persistence.
   // Passing null when there is no active team is safe; the hook falls back
@@ -55,17 +55,8 @@ export const ContentGenerationStudio: React.FC = () => {
     studio.buildMetadata().advancedOptions,
   )
 
-  // ── Wallet balance (Requirement 9.4) ─────────────────────────────────────
-  const [balance, setBalance] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!user?.id) return
-    let cancelled = false
-    void getWallet(user.id, activeTeam?.id).then((wallet) => {
-      if (!cancelled) setBalance(wallet?.balance ?? null)
-    })
-    return () => { cancelled = true }
-  }, [user?.id, activeTeam?.id])
+  // ── Wallet balance comes from AppContext so the navbar and studio stay in sync.
+  const balance = creditsBalance
 
   // ── Brand voice active (Requirement 5.4, 5.5) ────────────────────────────
   const [brandVoiceActive, setBrandVoiceActive] = useState(false)
