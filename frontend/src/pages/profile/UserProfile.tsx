@@ -14,7 +14,7 @@ const TIMEZONES = [
 ]
 
 export const UserProfile: React.FC = () => {
-  const { user, setUser } = useAppContext()
+  const { user, setUser, creditsBalance } = useAppContext()
 
   // Profile fields
   const [displayName, setDisplayName] = useState(user?.display_name ?? '')
@@ -22,7 +22,7 @@ export const UserProfile: React.FC = () => {
   const [bio, setBio]                 = useState(user?.bio ?? '')
   const [phone, setPhone]             = useState(user?.phone ?? '')
   const [timezone, setTimezone]       = useState(user?.timezone ?? 'UTC')
-  const [credits, setCredits]         = useState<number>(0)
+  const credits = creditsBalance ?? 0
 
   // Edit mode
   const [isEditing, setIsEditing] = useState(false)
@@ -35,14 +35,13 @@ export const UserProfile: React.FC = () => {
       if (!profile) return
       const p = profile as {
         display_name?: string; avatar_url?: string; bio?: string
-        phone?: string; timezone?: string; credits?: number
+        phone?: string; timezone?: string
       }
       setDisplayName(p.display_name ?? user.display_name ?? '')
       setAvatarUrl(p.avatar_url ?? user.avatar_url ?? '')
       setBio(p.bio ?? '')
       setPhone(p.phone ?? '')
       setTimezone(p.timezone ?? 'UTC')
-      setCredits(p.credits ?? 0)
     })
   }, [user])
 

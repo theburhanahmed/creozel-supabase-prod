@@ -182,14 +182,14 @@ export const MailboxMenu: React.FC = () => {
 
 // ─── Credits Menu ─────────────────────────────────────────────────────────────
 export const CreditsMenu: React.FC = () => {
-  const { showCreditsMenu, toggleCreditsMenu, user } = useAppContext()
+  const { showCreditsMenu, toggleCreditsMenu, creditsBalance } = useAppContext()
   const navigate = useNavigate()
 
   return (
     <Dropdown show={showCreditsMenu} onClose={toggleCreditsMenu}>
       <div className="p-5 border-b border-gray-200 dark:border-gray-700 text-center">
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Current Balance</p>
-        <p className="text-4xl font-bold text-[#3FE0A5]">{user?.credits ?? 0}</p>
+        <p className="text-4xl font-bold text-[#3FE0A5]">{creditsBalance ?? 0}</p>
         <p className="text-xs text-gray-400 mt-1">Credits</p>
       </div>
       <div className="p-4 space-y-2">

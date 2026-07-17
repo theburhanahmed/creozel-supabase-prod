@@ -6,6 +6,7 @@ import React, {
   useContext,
 } from 'react'
 import { authService } from '../services/authService'
+import { getWallet } from '../services/creditsService'
 import { supabase } from '../lib/supabase'
 import { reportError } from '../utils/errorReporter'
 import type { User, Team, TeamRole } from '../types'
@@ -60,6 +61,8 @@ interface AppContextType {
   user: User | null
   setUser: (user: User | null) => void
   isAuthLoading: boolean
+  // Wallet / credits state
+  creditsBalance: number | null
   // Team / tenant state
   activeTeam: Team | null
   teams: Team[]
@@ -107,6 +110,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
   const [showCreditsMenu, setShowCreditsMenu] = useState(false)
   const [showContentCreationModal, setShowContentCreationModal] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
+  const [creditsBalance, setCreditsBalance] = useState<number | null>(null)
 
   // Apply saved theme on mount
   useEffect(() => {
@@ -117,6 +121,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         : window.matchMedia('(prefers-color-scheme: dark)').matches
     setIsDarkMode(prefersDark)
     document.documentElement.classList.toggle('dark', prefersDark)
+  }, [])
+
+  // ─── Wallet / credits loading helper ─────────────────────────────────────────
+
+  const loadCreditsBalance = useCallback(async (userId: string, teamId?: string) => {
+    try {
+      const wallet = await getWallet(userId, teamId)
+      setCreditsBalance(wallet?.balance ?? null)
+    } catch (error: unknown) {
+      reportError('loadCreditsBalance [AppContext.tsx]', error, { userId, teamId })
+      setCreditsBalance(null)
+    }
   }, [])
 
   // ─── Team loading helper ─────────────────────────────────────────────────────
@@ -188,8 +204,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsAuthLoading(false)
       if (u) {
         void loadTeamsForUser(u.id)
+        void loadCreditsBalance(u.id)
       } else {
         setIsTeamLoading(false)
+        setCreditsBalance(null)
       }
     })
 
@@ -199,11 +217,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
       setIsAuthLoading(false)
       if (u) {
         void loadTeamsForUser(u.id)
+        void loadCreditsBalance(u.id)
       } else {
         // User logged out — clear team state
         setTeams([])
         setActiveTeamState(null)
         setIsTeamLoading(false)
+        setCreditsBalance(null)
         try {
           localStorage.removeItem('creozel:activeTeamId')
         } catch (error: unknown) {
@@ -213,7 +233,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     })
 
     return unsubscribe
-  }, [loadTeamsForUser])
+  }, [loadTeamsForUser, loadCreditsBalance])
 
   const toggleDarkMode = useCallback(() => {
     setIsDarkMode((prev) => {
@@ -283,6 +303,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
     }
   }, [])
 
+  // Reload wallet balance whenever the active team changes
+  useEffect(() => {
+    if (!user?.id) {
+      setCreditsBalance(null)
+      return
+    }
+    void loadCreditsBalance(user.id, activeTeam?.id)
+  }, [user?.id, activeTeam?.id, loadCreditsBalance])
+
   // Close menus on outside click
   useEffect(() => {
     if (!showProfileMenu && !showNotifications && !showMailbox && !showCreditsMenu)
@@ -303,6 +332,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({
         user,
         setUser,
         isAuthLoading,
+        creditsBalance,
         activeTeam,
         teams,
         setTeams,

@@ -14,7 +14,6 @@ export interface User {
   notification_preferences: NotificationPreferences
   onboarding_completed: boolean
   referral_code?: string
-  credits: number
   isAuthenticated: boolean
   // Derived from team_members role for the active team
   role?: TeamRole

@@ -26,7 +26,7 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
     isDarkMode, toggleDarkMode,
     toggleProfileMenu, toggleNotifications, toggleMailbox, toggleCreditsMenu,
     showProfileMenu, showNotifications, showMailbox, showCreditsMenu, user,
-    teams, activeTeam, setActiveTeam,
+    teams, activeTeam, setActiveTeam, creditsBalance,
   } = useAppContext()
 
   useEffect(() => { setIsSidebarOpen(false) }, [location.pathname])
@@ -177,7 +177,7 @@ export const MainNavigation: React.FC<{ onOpenCommandPalette?: () => void }> = (
                   onClick={toggleCreditsMenu} aria-expanded={showCreditsMenu} data-menu-toggle="credits"
                 >
                   <span className="text-xs font-semibold text-[#3FE0A5]">Credits:</span>
-                  <span className="text-xs font-bold text-gray-900 dark:text-white">{user?.credits ?? 0}</span>
+                  <span className="text-xs font-bold text-gray-900 dark:text-white">{creditsBalance ?? 0}</span>
                 </motion.button>
                 <CreditsMenu />
               </div>

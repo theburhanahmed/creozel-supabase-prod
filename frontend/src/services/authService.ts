@@ -187,7 +187,6 @@ async function mapSupabaseUser(supabaseUser: {
     timezone: 'UTC',
     notification_preferences: {},
     onboarding_completed,
-    credits: 0,
     isAuthenticated: true,
   }
 }
