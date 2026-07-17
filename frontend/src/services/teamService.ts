@@ -32,8 +32,22 @@ export async function getTeamMembers(teamId: string): Promise<TeamMember[]> {
 
 export async function inviteMember(teamId: string, email: string, role: TeamRole): Promise<boolean> {
   try {
-    const { error } = await supabase.from('team_invitations').insert({ team_id: teamId, email, role })
+    const { data: invitation, error } = await supabase
+      .from('team_invitations')
+      .insert({ team_id: teamId, email, role })
+      .select('id')
+      .single()
     if (error) { reportError('teamService.inviteMember', error); return false }
+
+    // Fire-and-forget email delivery — failures are logged but don't block the UI.
+    supabase.functions
+      .invoke('send-team-invitation', {
+        body: { invitation_id: invitation.id, team_id: teamId },
+      })
+      .catch((err: unknown) => {
+        reportError('teamService.inviteMember.sendEmail', err, { invitationId: invitation.id })
+      })
+
     return true
   } catch (error: unknown) {
     reportError('teamService.inviteMember', error)
