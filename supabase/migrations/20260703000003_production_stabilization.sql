@@ -28,6 +28,9 @@ alter table public.social_connections
 alter table public.pipelines
   add column if not exists user_id uuid references auth.users(id) on delete set null;
 
+alter table public.pipeline_executions
+  add column if not exists user_id uuid references auth.users(id) on delete set null;
+
 -- ─── 5. Retry / publishing metadata on content_jobs ───────────────────────────
 alter table public.content_jobs
   add column if not exists retry_count int not null default 0 check (retry_count >= 0),
@@ -209,7 +212,9 @@ end;
 $$;
 
 -- ─── 8. Fix analytics_overview solo-user aggregation bug ────────────────────────
-create or replace view public.analytics_overview as
+-- Drop first because the existing view may have different column names/positions.
+drop view if exists public.analytics_overview;
+create view public.analytics_overview as
 -- Team-scoped rows (unchanged)
 select
   t.id   as team_id,
@@ -285,6 +290,8 @@ comment on view public.analytics_overview is
 -- ─── 9. Scheduled cron jobs for publishing, metrics sync, and token refresh ───
 -- These require the pg_net extension and pg_cron to be enabled in the project.
 -- The functions use a shared CRON_SECRET header for authorization.
+create extension if not exists pg_cron;
+create extension if not exists pg_net;
 
 -- Helper to atomically claim a batch of due scheduled posts.
 -- Updates status to 'running' only for rows still marked 'scheduled' and due.
